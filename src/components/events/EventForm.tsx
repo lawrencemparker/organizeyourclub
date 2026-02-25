@@ -1,211 +1,248 @@
 import { useState, useEffect } from "react";
-import { useForm } from "react-hook-form";
-import { Calendar, Clock, MapPin, AlignLeft, Type, Loader2 } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/contexts/AuthContext";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { supabase } from "@/lib/supabase";
-import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import { Loader2, CalendarPlus } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface EventFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  eventToEdit?: any; // If present, we are in EDIT mode
+  eventToEdit?: any;
   onSuccess: () => void;
 }
+
+const EVENT_TYPES = [
+  "Meeting", 
+  "Social", 
+  "Workshop", 
+  "Professional Development", 
+  "Volunteering", 
+  "Recreational"
+];
+
+// Recreated exact colors from your screenshot
+const CARD_COLORS = [
+  { id: 'mint', value: '#c6f6d5' },
+  { id: 'blue', value: '#dbeafe' },
+  { id: 'peach', value: '#ffedd5' },
+  { id: 'purple', value: '#f3e8ff' },
+  { id: 'pink', value: '#fce7f3' },
+  { id: 'yellow', value: '#fef08a' }
+];
 
 export function EventForm({ open, onOpenChange, eventToEdit, onSuccess }: EventFormProps) {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
-  const { register, handleSubmit, reset, setValue, watch } = useForm();
+  const [orgId, setOrgId] = useState<string | null>(null);
 
-  // Reset form when opening/closing or switching modes
+  // Form States
+  const [title, setTitle] = useState("");
+  const [location, setLocation] = useState("");
+  const [date, setDate] = useState("");
+  const [time, setTime] = useState("");
+  const [eventType, setEventType] = useState("Meeting");
+  const [description, setDescription] = useState("");
+  const [cardColor, setCardColor] = useState(CARD_COLORS[0].value);
+
+  // Fetch user's organization on load
+  useEffect(() => {
+    if (user) {
+      supabase.from('profiles').select('organization_id').eq('id', user.id).single()
+        .then(({ data }) => {
+          if (data) setOrgId(data.organization_id);
+        });
+    }
+  }, [user]);
+
+  // Populate form when editing or resetting for a new event
   useEffect(() => {
     if (open) {
       if (eventToEdit) {
-        // PRE-FILL FOR EDITING
-        setValue("title", eventToEdit.title);
-        setValue("location", eventToEdit.location);
-        setValue("event_type", eventToEdit.event_type);
-        setValue("description", eventToEdit.description);
+        setTitle(eventToEdit.title || "");
+        setLocation(eventToEdit.location || "");
+        setDescription(eventToEdit.description || "");
+        setEventType(eventToEdit.event_type || "Meeting");
+        setCardColor(eventToEdit.card_color || eventToEdit.color || CARD_COLORS[0].value);
         
-        // Format date for datetime-local input (YYYY-MM-DDTHH:mm)
-        const date = new Date(eventToEdit.start_time);
-        const localIso = new Date(date.getTime() - (date.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
-        setValue("start_time", localIso);
+        // Parse the stored ISO string back into HTML date/time inputs
+        if (eventToEdit.start_time) {
+          const d = new Date(eventToEdit.start_time);
+          setDate(d.toISOString().split('T')[0]); // YYYY-MM-DD
+          setTime(d.toTimeString().slice(0, 5));  // HH:MM
+        }
       } else {
-        // RESET FOR CREATING
-        reset({
-          title: "",
-          location: "",
-          event_type: "meeting",
-          description: "",
-          start_time: ""
-        });
+        // Reset to defaults for New Event
+        setTitle("");
+        setLocation("");
+        setDescription("");
+        setEventType("Meeting");
+        setCardColor(CARD_COLORS[0].value);
+        
+        const now = new Date();
+        setDate(now.toISOString().split('T')[0]);
+        setTime("12:00");
       }
     }
-  }, [open, eventToEdit, setValue, reset]);
+  }, [open, eventToEdit]);
 
-  const onSubmit = async (data: any) => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!orgId) return toast.error("Organization not found.");
+    if (!title.trim() || !date || !time) return toast.error("Title, date, and time are required.");
+
     setLoading(true);
     try {
-      // Get Org ID
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('organization_id')
-        .eq('id', user?.id)
-        .single();
+      // Combine date and time back into a standard ISO timestamp for the database
+      const startTimestamp = new Date(`${date}T${time}`).toISOString();
 
-      if (!profile?.organization_id) throw new Error("No organization found");
+      const payload = {
+        organization_id: orgId,
+        title,
+        location,
+        description,
+        start_time: startTimestamp,
+        event_type: eventType,
+        card_color: cardColor,
+      };
 
-      if (eventToEdit) {
-        // --- UPDATE EXISTING ---
-        const { error } = await supabase
-          .from('events')
-          .update({
-            title: data.title,
-            start_time: new Date(data.start_time).toISOString(),
-            location: data.location,
-            event_type: data.event_type,
-            description: data.description,
-          })
-          .eq('id', eventToEdit.id);
-        
+      if (eventToEdit?.id) {
+        // Update Existing
+        const { error } = await supabase.from('events').update(payload).eq('id', eventToEdit.id);
         if (error) throw error;
-        toast.success("Event updated successfully");
+        toast.success("Event updated successfully!");
       } else {
-        // --- CREATE NEW ---
-        const { error } = await supabase
-          .from('events')
-          .insert({
-            organization_id: profile.organization_id,
-            title: data.title,
-            start_time: new Date(data.start_time).toISOString(),
-            location: data.location,
-            event_type: data.event_type,
-            description: data.description,
-            created_by: user?.id
-          });
-
+        // Create New
+        const { error } = await supabase.from('events').insert([payload]);
         if (error) throw error;
-        toast.success("Event created successfully");
+        toast.success("Event added to the board!");
       }
 
-      onSuccess(); // Refresh parent list
-      onOpenChange(false); // Close sheet
-    } catch (error: any) {
-      console.error(error);
-      toast.error(error.message || "Failed to save event");
+      onSuccess();
+      onOpenChange(false);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save event.");
+      console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-md bg-card border-l border-border/40 overflow-y-auto">
-        <SheetHeader className="mb-6">
-          <SheetTitle>{eventToEdit ? "Edit Event" : "Create New Event"}</SheetTitle>
-          <SheetDescription>
-            {eventToEdit ? "Make changes to your event details below." : "Schedule a new meeting, social, or fundraiser."}
-          </SheetDescription>
-        </SheetHeader>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      {/* Centered Modal Interface replacing the slide-out sheet */}
+      <DialogContent className="sm:max-w-[450px] bg-[#0B0F1A] border-white/10 text-white p-6 shadow-2xl rounded-2xl">
+        <DialogHeader className="mb-4">
+          <DialogTitle className="flex items-center gap-2 text-xl font-bold">
+            <CalendarPlus className="w-5 h-5 text-[#f97316]" /> 
+            {eventToEdit ? "Edit Event" : "Create New Event"}
+          </DialogTitle>
+        </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-          
-          {/* Title */}
+        <form onSubmit={handleSubmit} className="space-y-5">
           <div className="space-y-2">
-            <Label>Event Title</Label>
-            <div className="relative">
-              <Type className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input {...register("title", { required: true })} className="pl-9" placeholder="e.g. Weekly Chapter Meeting" />
-            </div>
+            <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Title</Label>
+            <Input 
+              value={title} 
+              onChange={e => setTitle(e.target.value)} 
+              placeholder="Event name..." 
+              className="bg-white/5 border-white/10 text-white focus-visible:ring-[#f97316]"
+              required 
+            />
           </div>
 
-          {/* Type */}
           <div className="space-y-2">
-            <Label>Event Type</Label>
-            <Select 
-              onValueChange={(val) => setValue("event_type", val)} 
-              defaultValue={eventToEdit?.event_type || "meeting"}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="meeting">Meeting</SelectItem>
-                <SelectItem value="social">Social</SelectItem>
-                <SelectItem value="fundraiser">Fundraiser</SelectItem>
-                <SelectItem value="service">Service</SelectItem>
-                <SelectItem value="other">Other</SelectItem>
-              </SelectContent>
-            </Select>
+            <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Location</Label>
+            <Input 
+              value={location} 
+              onChange={e => setLocation(e.target.value)} 
+              placeholder="Where?" 
+              className="bg-white/5 border-white/10 text-white focus-visible:ring-[#f97316]" 
+            />
           </div>
 
-          {/* Date & Time */}
-          <div className="space-y-2">
-            <Label>Date & Time</Label>
-            <div className="relative">
-              <Calendar className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Date</Label>
               <Input 
-                type="datetime-local" 
-                {...register("start_time", { required: true })} 
-                className="pl-9 block" 
+                type="date" 
+                value={date} 
+                onChange={e => setDate(e.target.value)} 
+                className="bg-white/5 border-white/10 text-white focus-visible:ring-[#f97316] [&::-webkit-calendar-picker-indicator]:filter-[invert(1)] cursor-pointer" 
+                required 
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Time</Label>
+              <Input 
+                type="time" 
+                value={time} 
+                onChange={e => setTime(e.target.value)} 
+                className="bg-white/5 border-white/10 text-white focus-visible:ring-[#f97316] [&::-webkit-calendar-picker-indicator]:filter-[invert(1)] cursor-pointer" 
+                required 
               />
             </div>
           </div>
 
-          {/* Location */}
           <div className="space-y-2">
-            <Label>Location</Label>
-            <div className="relative">
-              <MapPin className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input {...register("location")} className="pl-9" placeholder="e.g. Student Union Room 304" />
+            <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Event Type</Label>
+            <select 
+              value={eventType} 
+              onChange={e => setEventType(e.target.value)}
+              className="flex h-10 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#f97316]"
+            >
+              {EVENT_TYPES.map(type => (
+                <option key={type} value={type} className="bg-slate-900 text-white">{type}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Description Block Added */}
+          <div className="space-y-2">
+            <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Description</Label>
+            <textarea 
+              value={description} 
+              onChange={e => setDescription(e.target.value)} 
+              placeholder="What to expect, what to bring..." 
+              rows={3}
+              className="flex w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#f97316] resize-none" 
+            />
+          </div>
+
+          <div className="space-y-3">
+            <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Card Color</Label>
+            <div className="flex items-center gap-3">
+              {CARD_COLORS.map(color => (
+                <button
+                  key={color.id}
+                  type="button"
+                  onClick={() => setCardColor(color.value)}
+                  className={cn(
+                    "w-8 h-8 rounded-full transition-transform duration-200 border-2",
+                    cardColor === color.value ? "scale-125 border-white shadow-[0_0_15px_rgba(255,255,255,0.3)]" : "border-transparent hover:scale-110"
+                  )}
+                  style={{ backgroundColor: color.value }}
+                  aria-label={`Select ${color.id} color`}
+                />
+              ))}
             </div>
           </div>
 
-          {/* Description */}
-          <div className="space-y-2">
-            <Label>Description</Label>
-            <div className="relative">
-              <AlignLeft className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Textarea 
-                {...register("description")} 
-                className="pl-9 min-h-[100px]" 
-                placeholder="Add agenda items or details..." 
-              />
-            </div>
-          </div>
-
-          {/* Submit Button */}
-          <div className="pt-4">
-            <Button type="submit" variant="gradient" className="w-full" disabled={loading}>
-              {loading ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...</>
-              ) : (
-                eventToEdit ? "Save Changes" : "Create Event"
-              )}
+          <div className="pt-6 flex justify-end gap-3">
+            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} className="text-muted-foreground hover:text-white">
+              Cancel
+            </Button>
+            <Button type="submit" disabled={loading} className="bg-[#f97316] hover:bg-[#ea580c] text-white font-bold">
+              {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              {eventToEdit ? "Update Event" : "Create Event"}
             </Button>
           </div>
-
         </form>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }

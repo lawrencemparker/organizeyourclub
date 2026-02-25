@@ -24,10 +24,16 @@ export function Sidebar() {
   
   const [profile, setProfile] = useState<{ full_name: string; role: string } | null>(null);
   const [orgData, setOrgData] = useState<{ name: string; chapter: string } | null>(null);
+  
+  // State to hold READ permissions and loading status
+  const [pagePermissions, setPagePermissions] = useState<Record<string, boolean>>({});
+  const [menuLoading, setMenuLoading] = useState(true);
 
   useEffect(() => {
     async function getProfileData() {
       if (!user) return;
+      setMenuLoading(true);
+      
       try {
         const { data: profileData, error: profileError } = await supabase
           .from('profiles')
@@ -43,6 +49,7 @@ export function Sidebar() {
             role: profileData.role
           });
 
+          // Fetch Organization Data
           if (profileData.organization_id) {
             const { data: oData, error: orgError } = await supabase
               .from('organizations')
@@ -61,10 +68,41 @@ export function Sidebar() {
           } else {
              setOrgData({ name: "No Organization", chapter: "Please link your profile" });
           }
+
+          // Fetch the 'permissions' JSON column directly from the 'members' table
+          const { data: currentMember } = await supabase
+            .from('members')
+            .select('id, role, permissions')
+            .eq('email', user.email)
+            .maybeSingle();
+          
+          const role = (currentMember?.role || profileData.role || '').toLowerCase();
+          
+          // Only non-admins need to have their read permissions evaluated
+          if (role !== 'admin' && role !== 'president') {
+             const permMap: Record<string, boolean> = {};
+             
+             // The permissions are stored as a JSON object, so we loop through it to build our map
+             if (currentMember?.permissions && Object.keys(currentMember.permissions).length > 0) {
+               Object.keys(currentMember.permissions).forEach(pageName => {
+                 const pagePerms = currentMember.permissions[pageName];
+                 permMap[pageName.toLowerCase()] = !!pagePerms.read; 
+               });
+             } else {
+               // NEW DEFAULT: If they have no permissions explicitly saved yet, they default to READ for all pages
+               menuItems.forEach(item => {
+                 permMap[item.label.toLowerCase()] = true;
+               });
+             }
+             
+             setPagePermissions(permMap);
+          }
         }
       } catch (error) {
         console.error("Error loading sidebar data:", error);
         setOrgData({ name: "Connection Error", chapter: "Check database" });
+      } finally {
+        setMenuLoading(false);
       }
     }
     getProfileData();
@@ -80,6 +118,20 @@ export function Sidebar() {
     { label: "History", icon: History, path: "/history" },
     { label: "Settings", icon: Settings, path: "/settings" },
   ];
+
+  // Filter the menu items based on the user's READ permissions
+  const visibleMenuItems = menuItems.filter(item => {
+    const currentRole = profile?.role?.toLowerCase() || "";
+    
+    // Admins and Presidents bypass permission checks and see everything
+    if (currentRole === 'admin' || currentRole === 'president') return true;
+    
+    // EVERYONE gets access to the Overview landing page automatically
+    if (item.label === 'Overview') return true;
+    
+    // Convert label to lowercase to safely match against our normalized permissions map
+    return !!pagePermissions[item.label.toLowerCase()];
+  });
 
   return (
     <div className="flex flex-col h-full w-64 bg-[#0B0F1A] border-r border-border/40 shrink-0">
@@ -97,34 +149,51 @@ export function Sidebar() {
                 {orgData.chapter}
               </p>
             )}
-            <div className="flex items-center gap-1.5 text-[10px] text-[var(--primary)] font-bold uppercase tracking-wider mt-1.5 transition-colors duration-300">
-              <ShieldCheck className="w-3 h-3" />
-              <span>Admin View</span>
-            </div>
+            
+            {(profile?.role?.toLowerCase() === 'admin' || profile?.role?.toLowerCase() === 'president') && (
+              <div className="flex items-center gap-1.5 text-[10px] text-[var(--primary)] font-bold uppercase tracking-wider mt-1.5 transition-colors duration-300">
+                <ShieldCheck className="w-3 h-3" />
+                <span>Admin View</span>
+              </div>
+            )}
+            
           </div>
         </div>
       </div>
 
       <nav className="flex-1 px-4 py-4 space-y-1">
         <p className="px-2 mb-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest opacity-50">Menu</p>
-        {menuItems.map((item) => {
-          const isActive = location.pathname === item.path;
-          return (
-            <Link
-              key={item.path}
-              to={item.path}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all group",
-                isActive 
-                  ? "bg-[var(--primary)]/10 text-[var(--primary)]" 
-                  : "text-muted-foreground hover:bg-white/5 hover:text-foreground"
-              )}
-            >
-              <item.icon className={cn("w-4 h-4 transition-colors", isActive ? "text-[var(--primary)]" : "group-hover:text-foreground")} />
-              {item.label}
-            </Link>
-          );
-        })}
+        
+        {menuLoading ? (
+          <div className="space-y-3 pt-2">
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="h-8 bg-white/5 rounded-lg animate-pulse w-full"></div>
+            ))}
+          </div>
+        ) : visibleMenuItems.length > 0 ? (
+          visibleMenuItems.map((item) => {
+            const isActive = location.pathname === item.path;
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all group",
+                  isActive 
+                    ? "bg-[var(--primary)]/10 text-[var(--primary)]" 
+                    : "text-muted-foreground hover:bg-white/5 hover:text-foreground"
+                )}
+              >
+                <item.icon className={cn("w-4 h-4 transition-colors", isActive ? "text-[var(--primary)]" : "group-hover:text-foreground")} />
+                {item.label}
+              </Link>
+            );
+          })
+        ) : (
+          <div className="px-3 py-4 text-center border border-white/5 bg-white/5 rounded-lg mt-2">
+            <p className="text-xs text-muted-foreground font-medium">No page access granted.</p>
+          </div>
+        )}
       </nav>
 
       <div className="px-4 py-4 border-t border-border/40 space-y-2">

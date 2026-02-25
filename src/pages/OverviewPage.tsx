@@ -1,16 +1,14 @@
 import { ForcePasswordSetup } from "@/components/auth/ForcePasswordSetup";
+import { ForcePasswordReset } from "@/components/auth/ForcePasswordReset";
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { 
   Users, Calendar, Activity, Loader2, ArrowUpRight, ArrowDownLeft, 
-  CheckCircle2, Circle, AlertCircle, Plus 
+  CheckCircle2, Circle, AlertCircle, Plus, ClipboardCheck
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { useLocalStorage } from "@/hooks/useLocalStorage";
-import { initialMembers } from "@/lib/mockData";
-import { Member } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
@@ -19,12 +17,14 @@ import { TransactionForm } from "@/components/finance/TransactionForm";
 export function OverviewPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [members] = useLocalStorage<Member[]>("org-members", initialMembers);
   
   const [loading, setLoading] = useState(true);
+  const [dbMembers, setDbMembers] = useState<any[]>([]);
   const [dbEvents, setDbEvents] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [complianceTasks, setComplianceTasks] = useState<any[]>([]);
+  
+  const [canCreateEvent, setCanCreateEvent] = useState(false);
 
   const [isFinanceOpen, setIsFinanceOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<any>(null);
@@ -36,21 +36,57 @@ export function OverviewPage() {
       if (!profile?.organization_id) return;
       const orgId = profile.organization_id;
 
-      // Ensure Brand Color is Set
       const { data: org } = await supabase.from('organizations').select('brand_color').eq('id', orgId).single();
       if (org?.brand_color) {
         document.documentElement.style.setProperty('--primary', org.brand_color);
       }
 
-      const [eventsRes, financeRes, complianceRes] = await Promise.all([
-        supabase.from('events').select('*').eq('organization_id', orgId).order('start_time', { ascending: true }).limit(4),
+      let hasEventCreatePerm = false;
+      const { data: currentMember } = await supabase.from('members').select('id, role').eq('email', user.email).maybeSingle();
+      
+      if (currentMember) {
+        const role = currentMember.role?.toLowerCase() || '';
+        if (role === 'admin' || role === 'president') {
+          hasEventCreatePerm = true;
+        } else {
+          const { data: perm } = await supabase.from('permissions').select('create').eq('member_id', currentMember.id).eq('page', 'Events').maybeSingle();
+          if (perm) {
+            hasEventCreatePerm = !!perm.create;
+          } else {
+            const { data: userPerm } = await supabase.from('permissions').select('create').eq('user_id', user.id).eq('page', 'Events').maybeSingle();
+            hasEventCreatePerm = !!userPerm?.create;
+          }
+        }
+      }
+      setCanCreateEvent(hasEventCreatePerm);
+
+      const nowIso = new Date().toISOString();
+
+      const [eventsRes, financeRes, complianceRes, membersRes] = await Promise.all([
+        supabase.from('events').select('*').eq('organization_id', orgId).gte('start_time', nowIso).order('start_time', { ascending: true }).limit(4),
         supabase.from('finances').select('*').eq('organization_id', orgId).order('transaction_date', { ascending: false }).limit(5),
-        supabase.from('compliance').select('*').eq('organization_id', orgId).order('due_date', { ascending: true })
+        supabase.from('compliance').select('*').eq('organization_id', orgId).order('due_date', { ascending: true }),
+        supabase.from('members').select('*').eq('org_id', orgId).order('created_at', { ascending: false })
       ]);
+
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      const todayStr = `${yyyy}-${mm}-${dd}`;
+      
+      const fetchedTasks = complianceRes.data || [];
+      for (const task of fetchedTasks) {
+        if (task.status?.toLowerCase() === 'pending' && task.due_date < todayStr) {
+          await supabase.from('compliance').update({ status: 'Overdue' }).eq('id', task.id);
+          task.status = 'Overdue';
+        }
+      }
 
       setDbEvents(eventsRes.data || []);
       setTransactions(financeRes.data || []);
-      setComplianceTasks(complianceRes.data || []);
+      setComplianceTasks(fetchedTasks);
+      setDbMembers(membersRes.data || []);
     } catch (err) {
       console.error("Dashboard sync error:", err);
     } finally {
@@ -68,27 +104,26 @@ export function OverviewPage() {
 
   const complianceStats = useMemo(() => {
     const total = complianceTasks.length;
-    const completed = complianceTasks.filter(t => t.status === 'completed').length;
+    const completed = complianceTasks.filter(t => t.status?.toLowerCase() === 'completed').length;
     return { percent: total > 0 ? Math.round((completed / total) * 100) : 0, completed, total };
   }, [complianceTasks]);
 
-  const recentMembers = useMemo(() => [...members].reverse().slice(0, 5), [members]);
+  const recentMembers = useMemo(() => dbMembers.slice(0, 5), [dbMembers]);
 
   if (loading) return <div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="w-8 h-8 animate-spin text-[var(--primary)] opacity-50" /></div>;
 
   return (
     <div className="p-6 sm:p-8 space-y-8">
-      {/* THE NEW LISTENER COMPONENT */}
-      <ForcePasswordSetup />
       
-      {/* PageHeader with NO buttons */}
+      <ForcePasswordSetup />
+      <ForcePasswordReset />
+      
       <PageHeader title="Dashboard Overview" subtitle="Manage your organization's members, events, and treasury." />
 
-      {/* TOP SUMMARY METRICS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="glass-card p-6 relative overflow-hidden group hover:border-[var(--primary)]/30 transition-all">
           <p className="text-sm font-medium text-muted-foreground">Total Members</p>
-          <p className="text-3xl font-bold mt-2">{members.length}</p>
+          <p className="text-3xl font-bold mt-2">{dbMembers.length}</p>
           <div className="absolute top-6 right-6 p-3 rounded-xl bg-[var(--primary)]/10 text-[var(--primary)]"><Users className="w-5 h-5" /></div>
         </div>
         <div className="glass-card p-6 relative overflow-hidden group hover:border-[var(--primary)]/30 transition-all">
@@ -104,7 +139,7 @@ export function OverviewPage() {
         <div className="glass-card p-6 relative overflow-hidden group hover:border-[var(--primary)]/30 transition-all">
           <p className="text-sm font-medium text-muted-foreground">Compliance Score</p>
           <p className="text-3xl font-bold mt-2">{complianceStats.percent}%</p>
-          <div className="absolute top-6 right-6 p-3 rounded-xl bg-[var(--primary)]/10 text-[var(--primary)]"><Activity className="w-5 h-5" /></div>
+          <div className="absolute top-6 right-6 p-3 rounded-xl bg-[var(--primary)]/10 text-[var(--primary)]"><ClipboardCheck className="w-5 h-5" /></div>
         </div>
       </div>
 
@@ -126,31 +161,45 @@ export function OverviewPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/40">
-                {recentMembers.map((m) => (
-                  <tr key={m.id} className="hover:bg-white/5 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-[var(--primary)]/20 flex items-center justify-center text-xs font-bold text-[var(--primary)] shrink-0 transition-colors duration-300 border border-[var(--primary)]/20">
-                          {m.avatar}
+                {recentMembers.map((m) => {
+                  const initials = m.full_name ? m.full_name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase() : '??';
+                  const statusLower = m.status?.toLowerCase();
+                  
+                  return (
+                    <tr key={m.id} className="hover:bg-white/5 transition-colors">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-[var(--primary)]/20 flex items-center justify-center text-xs font-bold text-[var(--primary)] shrink-0 transition-colors duration-300 border border-[var(--primary)]/20">
+                            {initials}
+                          </div>
+                          <div>
+                            <p className="font-medium text-foreground">{m.full_name || 'Unnamed Member'}</p>
+                            <p className="text-xs text-muted-foreground">{m.email}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-medium text-foreground">{m.name}</p>
-                          <p className="text-xs text-muted-foreground">{m.email}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-muted-foreground capitalize">{m.role}</td>
-                    <td className="px-6 py-4 text-right">
-                      <Badge variant="outline" className={cn(
-                        m.status === "Active" 
-                          ? "border-[var(--primary)]/30 text-[var(--primary)] bg-[var(--primary)]/10" 
-                          : "border-orange-500/30 text-orange-500 bg-orange-500/10"
-                      )}>
-                        {m.status}
-                      </Badge>
+                      </td>
+                      <td className="px-6 py-4 text-muted-foreground capitalize">{m.role || 'Member'}</td>
+                      <td className="px-6 py-4 text-right">
+                        <Badge variant="outline" className={cn(
+                          statusLower === "active" 
+                            ? "border-[var(--primary)]/30 text-[var(--primary)] bg-[var(--primary)]/10" 
+                            : statusLower === "pending"
+                              ? "border-orange-500/30 text-orange-500 bg-orange-500/10"
+                              : "border-red-500/30 text-red-500 bg-red-500/10"
+                        )}>
+                          {m.status || 'Unknown'}
+                        </Badge>
+                      </td>
+                    </tr>
+                  )
+                })}
+                {recentMembers.length === 0 && (
+                  <tr>
+                    <td colSpan={3} className="px-6 py-8 text-center text-sm text-muted-foreground italic">
+                      No members found in your organization.
                     </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>
@@ -178,9 +227,12 @@ export function OverviewPage() {
                 </div>
               ))
             )}
-            <Button className="w-full mt-auto bg-[var(--primary)] hover:opacity-90 text-white" onClick={() => navigate('/events')}>
-              <Plus className="w-4 h-4 mr-2" /> Schedule Event
-            </Button>
+            
+            {canCreateEvent && (
+              <Button className="w-full mt-auto bg-[var(--primary)] hover:opacity-90 text-white" onClick={() => navigate('/events')}>
+                <Plus className="w-4 h-4 mr-2" /> Schedule Event
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -248,31 +300,34 @@ export function OverviewPage() {
           </div>
 
           <div className="space-y-3">
-            {complianceTasks.map((task) => (
-              <div key={task.id} className="p-3 rounded-lg bg-white/5 border border-white/5 flex items-center justify-between group hover:border-[var(--primary)]/20 transition-all">
-                <div className="flex items-center gap-3">
-                  {task.status === 'completed' ? (
-                    <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0" />
-                  ) : task.status === 'overdue' ? (
-                    <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
-                  ) : (
-                    <Circle className="w-5 h-5 text-muted-foreground shrink-0" />
-                  )}
-                  <div>
-                    <p className={cn("text-sm font-medium", task.status === 'completed' ? "text-muted-foreground line-through" : "text-foreground")}>
-                      {task.title}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground">Due: {task.due_date}</p>
+            {complianceTasks.map((task) => {
+              const statusLower = task.status?.toLowerCase();
+              return (
+                <div key={task.id} className="p-3 rounded-lg bg-white/5 border border-white/5 flex items-center justify-between group hover:border-[var(--primary)]/20 transition-all">
+                  <div className="flex items-center gap-3">
+                    {statusLower === 'completed' ? (
+                      <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0" />
+                    ) : statusLower === 'overdue' ? (
+                      <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
+                    ) : (
+                      <Circle className="w-5 h-5 text-muted-foreground shrink-0" />
+                    )}
+                    <div>
+                      <p className={cn("text-sm font-medium", statusLower === 'completed' ? "text-muted-foreground line-through" : "text-foreground")}>
+                        {task.title}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">Due: {task.due_date}</p>
+                    </div>
                   </div>
+                  <Badge variant="outline" className={cn("text-[10px] px-2 h-5 border-transparent capitalize", 
+                      statusLower === "completed" ? "bg-green-500/10 text-green-500" : 
+                      statusLower === "overdue" ? "bg-red-500/10 text-red-500" : "bg-orange-500/10 text-orange-500"
+                    )}>
+                      {task.status}
+                  </Badge>
                 </div>
-                <Badge variant="outline" className={cn("text-[10px] px-2 h-5 border-transparent", 
-                    task.status === "completed" ? "bg-green-500/10 text-green-500" : 
-                    task.status === "overdue" ? "bg-red-500/10 text-red-500" : "bg-orange-500/10 text-orange-500"
-                  )}>
-                    {task.status}
-                </Badge>
-              </div>
-            ))}
+              );
+            })}
              {complianceTasks.length === 0 && <p className="text-sm text-muted-foreground italic">No compliance tasks found.</p>}
           </div>
         </div>

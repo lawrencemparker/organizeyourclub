@@ -1,9 +1,9 @@
 import { useEffect, useState, useMemo } from "react";
 import { 
-  ArrowUpRight, ArrowDownRight, Search, Download, Filter, 
-  Loader2, MoreVertical, Edit2, Trash2, ChevronLeft, Plus, DollarSign 
+  Search, Download, Filter, 
+  Loader2, MoreVertical, Edit2, Trash2, Plus, DollarSign 
 } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -25,15 +25,48 @@ export function FinancePage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [transactions, setTransactions] = useState<any[]>([]);
+  
+  // Filter & Search States
   const [searchTerm, setSearchTerm] = useState("");
+  const [typeFilter, setTypeFilter] = useState<"all" | "income" | "expense">("all");
+  
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<any>(null);
+  
+  // RBAC States
+  const [canCreateFinance, setCanCreateFinance] = useState(false);
+  const [userRole, setUserRole] = useState("");
 
   const fetchTransactions = async () => {
     if (!user) return;
     try {
-      const { data: profile } = await supabase.from('profiles').select('organization_id').eq('id', user.id).single();
+      const { data: profile } = await supabase.from('profiles').select('organization_id, role').eq('id', user.id).single();
       if (!profile?.organization_id) return;
+
+      // STRICT ISOLATION: Fetch permissions for this specific org
+      const { data: currentMember } = await supabase
+        .from('members')
+        .select('id, role, permissions')
+        .eq('email', user.email)
+        .eq('org_id', profile.organization_id)
+        .maybeSingle();
+      
+      const resolvedRole = (currentMember?.role || profile?.role || '').toLowerCase();
+      setUserRole(resolvedRole); 
+      
+      const isSuper = resolvedRole === 'admin' || resolvedRole === 'president';
+      const perms = currentMember?.permissions?.['Finances'] || {};
+
+      // ─── URL REDIRECT SECURITY ──────────────────────────────────────
+      // If the user is NOT an admin, and their Read permission is explicitly false, kick them out!
+      if (!isSuper && perms.read === false) {
+        toast.error("Access Denied: You do not have permission to view Finances.");
+        navigate('/overview', { replace: true });
+        return; 
+      }
+      // ────────────────────────────────────────────────────────────────
+
+      setCanCreateFinance(isSuper || !!perms.create);
 
       const { data, error } = await supabase
         .from('finances')
@@ -53,16 +86,30 @@ export function FinancePage() {
 
   useEffect(() => { fetchTransactions(); }, [user]);
 
+  // Dynamic Calculation: Totals
   const totals = useMemo(() => {
-    const income = transactions.filter(t => t.type === 'income').reduce((acc, curr) => acc + Number(curr.amount), 0);
-    const expenses = transactions.filter(t => t.type === 'expense').reduce((acc, curr) => acc + Number(curr.amount), 0);
+    let income = 0;
+    let expenses = 0;
+
+    transactions.forEach(t => {
+      const rawAmt = Number(t.amount);
+      if (t.type === 'income') {
+        income += rawAmt;
+      } else if (t.type === 'expense') {
+        expenses += Math.abs(rawAmt);
+      }
+    });
+
     return { income, expenses, balance: income - expenses };
   }, [transactions]);
 
-  const filteredTransactions = transactions.filter(t => 
-    t.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    t.category.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Combined Search & Type Filter Logic
+  const filteredTransactions = transactions.filter(t => {
+    const matchesSearch = t.description.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          t.category.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesType = typeFilter === "all" || t.type === typeFilter;
+    return matchesSearch && matchesType;
+  });
 
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this transaction?")) return;
@@ -76,26 +123,51 @@ export function FinancePage() {
     }
   };
 
+  const handleExport = () => {
+    if (filteredTransactions.length === 0) {
+      toast.error("No transactions to export.");
+      return;
+    }
+
+    const headers = ["Date", "Description", "Category", "Type", "Amount"];
+    const csvData = filteredTransactions.map(t => {
+      const cleanDesc = t.description ? t.description.replace(/"/g, '""') : "";
+      return `${t.transaction_date},"${cleanDesc}","${t.category}",${t.type},${t.amount}`;
+    });
+
+    const csvContent = [headers.join(","), ...csvData].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = window.URL.createObjectURL(blob);
+    
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `treasury_export_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   if (loading) return <div className="flex justify-center py-20"><Loader2 className="animate-spin text-[var(--primary)]" /></div>;
 
   return (
     <div className="p-6 sm:p-8 space-y-8">
-           <PageHeader 
+      <PageHeader 
         title="Treasury & Finances" 
         subtitle="Complete record of organization income and expenses"
         actions={
-          <Button 
-            onClick={() => { setEditingTransaction(null); setIsFormOpen(true); }}
-            className="bg-[var(--primary)] hover:opacity-90 text-white shadow-md shadow-[var(--primary)]/20 transition-all"
-          >
-            <Plus className="w-4 h-4 mr-2" /> Add Transaction
-          </Button>
+          canCreateFinance ? (
+            <Button 
+              onClick={() => { setEditingTransaction(null); setIsFormOpen(true); }}
+              className="bg-[var(--primary)] hover:opacity-90 text-white shadow-md shadow-[var(--primary)]/20 transition-all"
+            >
+              <Plus className="w-4 h-4 mr-2" /> Add Transaction
+            </Button>
+          ) : undefined
         }
       />
 
       {/* Financial Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* BRANDING: Current Balance uses var(--primary) */}
         <div className="glass-card p-6 border-b-2 border-[var(--primary)] relative overflow-hidden group">
           <div className="absolute top-0 right-0 p-4 opacity-10">
             <DollarSign className="w-12 h-12 text-[var(--primary)]" />
@@ -106,21 +178,17 @@ export function FinancePage() {
           </p>
         </div>
 
-        {/* RESTORED: Green for Income */}
         <div className="glass-card p-6 border-b-2 border-green-500/50">
           <p className="text-sm font-medium text-muted-foreground">Total Income</p>
           <div className="flex items-center gap-2 mt-2">
-            <p className="text-2xl font-bold text-green-500">${totals.income.toLocaleString()}</p>
-            <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/20"><ArrowUpRight className="w-3 h-3 mr-1" /> +12%</Badge>
+            <p className="text-2xl font-bold text-green-500">${totals.income.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
           </div>
         </div>
 
-        {/* RESTORED: Red for Expenses */}
         <div className="glass-card p-6 border-b-2 border-red-500/50">
           <p className="text-sm font-medium text-muted-foreground">Total Expenses</p>
           <div className="flex items-center gap-2 mt-2">
-            <p className="text-2xl font-bold text-red-500">${totals.expenses.toLocaleString()}</p>
-            <Badge variant="outline" className="bg-red-500/10 text-red-500 border-red-500/20"><ArrowDownRight className="w-3 h-3 mr-1" /> -5%</Badge>
+            <p className="text-2xl font-bold text-red-500">${totals.expenses.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
           </div>
         </div>
       </div>
@@ -138,8 +206,25 @@ export function FinancePage() {
             />
           </div>
           <div className="flex gap-2">
-            <Button variant="outline"><Filter className="w-4 h-4 mr-2" /> Filter</Button>
-            <Button variant="outline"><Download className="w-4 h-4 mr-2" /> Export</Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="capitalize">
+                  <Filter className="w-4 h-4 mr-2" /> 
+                  {typeFilter === 'all' ? 'Filter' : typeFilter}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setTypeFilter("all")}>All Transactions</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setTypeFilter("income")}>Income Only</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setTypeFilter("expense")}>Expenses Only</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {(userRole === 'admin' || userRole === 'president') && (
+              <Button variant="outline" onClick={handleExport}>
+                <Download className="w-4 h-4 mr-2" /> Export
+              </Button>
+            )}
           </div>
         </div>
 
@@ -151,7 +236,7 @@ export function FinancePage() {
                 <th className="px-6 py-4">Description</th>
                 <th className="px-6 py-4">Category</th>
                 <th className="px-6 py-4 text-right">Amount</th>
-                <th className="px-6 py-4 text-right">Actions</th>
+                {canCreateFinance && <th className="px-6 py-4 text-right">Actions</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-border/40">
@@ -163,34 +248,35 @@ export function FinancePage() {
                     <Badge variant="secondary" className="font-normal bg-white/5 hover:bg-white/10">{t.category}</Badge>
                   </td>
                   
-                  {/* RESTORED: Explicit Red/Green Logic for Table Amounts */}
                   <td className={cn("px-6 py-4 font-bold text-right", t.type === 'income' ? "text-green-500" : "text-red-500")}>
-                    {t.type === 'income' ? '+' : '-'}${Number(t.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    {t.type === 'income' ? '+' : '-'}${Math.abs(Number(t.amount)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                   </td>
                   
-                  <td className="px-6 py-4 text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => { setEditingTransaction(t); setIsFormOpen(true); }}>
-                          <Edit2 className="w-4 h-4 mr-2" /> Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(t.id)}>
-                          <Trash2 className="w-4 h-4 mr-2" /> Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </td>
+                  {canCreateFinance && (
+                    <td className="px-6 py-4 text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => { setEditingTransaction(t); setIsFormOpen(true); }}>
+                            <Edit2 className="w-4 h-4 mr-2" /> Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(t.id)}>
+                            <Trash2 className="w-4 h-4 mr-2" /> Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </td>
+                  )}
                 </tr>
               ))}
               {filteredTransactions.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">
-                    No transactions found. Click "Add Transaction" to get started.
+                  <td colSpan={canCreateFinance ? 5 : 4} className="px-6 py-12 text-center text-muted-foreground">
+                    No transactions found. {canCreateFinance ? 'Click "Add Transaction" to get started.' : ''}
                   </td>
                 </tr>
               )}

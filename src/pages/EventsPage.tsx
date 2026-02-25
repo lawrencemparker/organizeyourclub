@@ -1,253 +1,170 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/contexts/AuthContext";
+import { useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Clock, MapPin, ArrowUpRight, CalendarDays } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Loader2, Plus, Clock, MapPin, MoreVertical, Edit2, Trash2, ArrowUpRight } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { EventForm } from "@/components/events/EventForm"; 
 
-const INITIAL_EVENTS = [
-  { id: 1, title: "Spring Intake Orientation", type: "MEETING", month: "FEB", day: 10, time: "05:35 PM", location: "Pembroke Pines, FL", color: "#c8f0e0" },
-  { id: 2, title: "Weekly Chapter Meeting", type: "MEETING", month: "FEB", day: 12, time: "11:00 AM", location: "Room 304, Student Union", color: "#d4e4ff" },
-  { id: 3, title: "Probate Show", type: "SOCIAL", month: "MAR", day: 1, time: "09:25 PM", location: "Courtyard", color: "#ffe8cc" },
-  { id: 4, title: "Founders Day Gala", type: "SOCIAL", month: "APR", day: 15, time: "08:00 PM", location: "Downtown Hotel", color: "#f5d4ff" },
-];
+const EVENT_TYPES = ["All", "Meeting", "Social", "Workshop", "Professional Development", "Volunteering", "Recreational", "Past Events"];
 
-const TYPE_COLORS: Record<string, { pill: string, text: string }> = {
-  MEETING: { pill: "#000000", text: "#ffffff" },
-  SOCIAL:  { pill: "#f97316", text: "#ffffff" },
+const getTypeStyles = (type: string) => {
+  const t = (type || '').toLowerCase();
+  if (t.includes('meeting')) return { bg: 'bg-[#c6f6d5] text-teal-950', badge: 'bg-black/90 text-[#c6f6d5]' };
+  if (t.includes('social')) return { bg: 'bg-[#ffedd5] text-orange-950', badge: 'bg-black/90 text-[#ffedd5]' };
+  if (t.includes('workshop')) return { bg: 'bg-[#dbeafe] text-blue-950', badge: 'bg-black/90 text-[#dbeafe]' };
+  if (t.includes('professional')) return { bg: 'bg-[#f3e8ff] text-indigo-950', badge: 'bg-black/90 text-[#f3e8ff]' };
+  if (t.includes('volunteer')) return { bg: 'bg-[#fce7f3] text-pink-950', badge: 'bg-black/90 text-[#fce7f3]' };
+  if (t.includes('recreational')) return { bg: 'bg-[#fef08a] text-yellow-950', badge: 'bg-black/90 text-[#fef08a]' };
+  return { bg: 'bg-slate-200 text-slate-900', badge: 'bg-black text-slate-200' };
 };
 
-const MONTHS = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
-const COLOR_OPTIONS = ["#c8f0e0", "#d4e4ff", "#ffe8cc", "#f5d4ff", "#ffd4d4", "#d4f5e9"];
-
 export function EventsPage() {
-  const [events, setEvents] = useState(INITIAL_EVENTS);
-  const [filter, setFilter] = useState("ALL");
-  const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ 
-    title: "", 
-    type: "MEETING", 
-    month: "JAN", 
-    day: 1, 
-    time: "12:00 PM", 
-    location: "", 
-    color: "#c8f0e0" 
-  });
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  const [events, setEvents] = useState<any[]>([]);
+  const [activeFilter, setActiveFilter] = useState("All");
 
-  const filtered = filter === "ALL" ? events : events.filter(e => e.type === filter);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<any>(null);
 
-  const handleCreate = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.title) return;
-    setEvents(p => [...p, { ...form, id: Date.now() }]);
-    setShowModal(false);
-    setForm({ title: "", type: "MEETING", month: "JAN", day: 1, time: "12:00 PM", location: "", color: "#c8f0e0" });
+  const [canCreate, setCanCreate] = useState(false);
+  const [canEdit, setCanEdit] = useState(false);
+  const [canDelete, setCanDelete] = useState(false);
+
+  const fetchEvents = async () => {
+    if (!user) return;
+    try {
+      const { data: profile } = await supabase.from('profiles').select('organization_id').eq('id', user.id).single();
+      if (!profile?.organization_id) return;
+
+      const { data: currentMember } = await supabase
+        .from('members')
+        .select('role, permissions')
+        .eq('email', user.email)
+        .eq('org_id', profile.organization_id) 
+        .maybeSingle();
+
+      const role = currentMember?.role?.toLowerCase() || '';
+      const isSuper = role === 'admin' || role === 'president';
+      const perms = currentMember?.permissions?.['Events'] || {};
+
+      // ─── URL REDIRECT SECURITY ───
+      if (!isSuper && perms.read === false) {
+        toast.error("Access Denied: You do not have permission to view Events.");
+        navigate('/overview', { replace: true });
+        return; 
+      }
+
+      setCanCreate(isSuper || !!perms.create);
+      setCanEdit(isSuper || !!perms.update);
+      setCanDelete(isSuper || !!perms.delete);
+
+      const { data, error } = await supabase
+        .from('events')
+        .select('*')
+        .eq('organization_id', profile.organization_id)
+        .order('start_time', { ascending: true });
+
+      if (error) throw error;
+      setEvents(data || []);
+    } catch (error) {
+      console.error("Error fetching events:", error);
+      toast.error("Failed to load events.");
+    } finally {
+      setLoading(false);
+    }
   };
+
+  useEffect(() => { fetchEvents(); }, [user]);
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this event?")) return;
+    try {
+      const { error } = await supabase.from('events').delete().eq('id', id);
+      if (error) throw error;
+      toast.success("Event deleted");
+      fetchEvents();
+    } catch (err) { toast.error("Failed to delete event"); }
+  };
+
+  const filteredEvents = useMemo(() => {
+    const now = new Date();
+    if (activeFilter === "Past Events") return events.filter(e => new Date(e.start_time) < now);
+    const futureEvents = events.filter(e => new Date(e.start_time) >= now);
+    if (activeFilter === "All") return futureEvents;
+    return futureEvents.filter(e => (e.event_type || '').toLowerCase() === activeFilter.toLowerCase());
+  }, [events, activeFilter]);
+
+  if (loading) return <div className="flex justify-center py-20"><Loader2 className="animate-spin text-[var(--primary)] w-8 h-8" /></div>;
 
   return (
     <div className="p-6 sm:p-8 space-y-8">
-      {/* Header matching the app's layout */}
       <PageHeader 
         title="Events Board" 
         subtitle="Schedule meetings, socials, and track attendance."
-        actions={
-          <Button onClick={() => setShowModal(true)} className="bg-[var(--primary)] text-white hover:opacity-90 shadow-md">
-            <Plus className="w-4 h-4 mr-2" /> Create Event
-          </Button>
-        }
+        actions={canCreate ? <Button onClick={() => { setEditingEvent(null); setIsFormOpen(true); }} className="bg-[var(--primary)] hover:opacity-90 text-white font-bold px-6 shadow-lg shadow-[var(--primary)]/20"><Plus className="w-4 h-4 mr-2" /> Schedule Event</Button> : undefined}
       />
+      <div className="flex items-center justify-between gap-4 border-b border-white/5 pb-4">
+        <div className="flex gap-2 overflow-x-auto custom-scrollbar pb-2 flex-1">
+          {EVENT_TYPES.map(type => (
+            <button key={type} onClick={() => setActiveFilter(type)} className={cn("px-4 py-1.5 rounded-full text-xs font-bold uppercase whitespace-nowrap transition-all duration-200", activeFilter === type ? "bg-white text-black shadow-md" : "bg-white/5 text-muted-foreground hover:bg-white/10 hover:text-white")}>{type}</button>
+          ))}
+        </div>
+        <div className="hidden sm:flex text-xs font-bold text-muted-foreground whitespace-nowrap bg-white/5 px-3 py-1.5 rounded-full">{filteredEvents.length} EVENTS</div>
+      </div>
 
-      {/* Filter Controls */}
-      <div className="flex items-center gap-2 pb-2">
-        {["ALL", "MEETING", "SOCIAL"].map(f => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={cn(
-              "px-5 py-2 rounded-full text-xs font-bold tracking-wider transition-all duration-200",
-              filter === f 
-                ? "bg-white text-black shadow-md" 
-                : "bg-white/5 text-muted-foreground hover:bg-white/10 hover:text-white"
-            )}
-          >
-            {f}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {filteredEvents.map((e) => {
+          const startDate = new Date(e.start_time);
+          const isPast = startDate < new Date();
+          const fallbackStyles = getTypeStyles(e.event_type);
+          const customColor = e.card_color || e.color; 
+          return (
+            <div key={e.id} className={cn("p-5 rounded-2xl flex flex-col relative transition-all duration-300 hover:scale-[1.02] min-h-[160px] shadow-lg", !customColor && fallbackStyles.bg, isPast && "opacity-50 grayscale")} style={customColor ? { backgroundColor: customColor, color: '#111827' } : undefined}>
+              <div className="flex justify-between items-start mb-4">
+                <Badge className={cn("px-3 py-1 text-[10px] uppercase tracking-wider font-black border-none", customColor ? "bg-black/90 text-white" : fallbackStyles.badge)}>{e.event_type || 'Event'}</Badge>
+                <div className="flex items-start gap-1">
+                  {(canEdit || canDelete) && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-6 w-6 rounded-full hover:bg-black/10 text-current -mt-1 mr-1"><MoreVertical className="w-4 h-4" /></Button></DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="bg-[#0B0F1A] border-white/10 text-white">
+                        {canEdit && <DropdownMenuItem className="cursor-pointer" onClick={() => { setEditingEvent(e); setIsFormOpen(true); }}><Edit2 className="w-4 h-4 mr-2" /> Edit</DropdownMenuItem>}
+                        {canDelete && <DropdownMenuItem className="text-destructive cursor-pointer" onClick={() => handleDelete(e.id)}><Trash2 className="w-4 h-4 mr-2" /> Delete</DropdownMenuItem>}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                  <div className="text-right flex flex-col items-center leading-none">
+                    <span className="text-[10px] font-black uppercase opacity-60 mb-0.5">{startDate.toLocaleString('default', { month: 'short' })}</span>
+                    <span className="text-2xl font-black tracking-tighter">{startDate.getDate()}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex-1 mb-4 pr-6">
+                <h3 className="text-lg font-black leading-tight tracking-tight mb-1.5">{e.title}</h3>
+                <p className={cn("text-xs font-semibold line-clamp-2 leading-relaxed", e.description ? "opacity-75" : "opacity-40 italic")}>{e.description || "No description provided."}</p>
+              </div>
+              <div className="space-y-1.5 text-xs font-semibold opacity-80 mt-auto">
+                <div className="flex items-center gap-2"><Clock className="w-3.5 h-3.5" /><span>{startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div>
+                {e.location && <div className="flex items-center gap-2"><MapPin className="w-3.5 h-3.5" /><span className="truncate">{e.location}</span></div>}
+              </div>
+              <div className="absolute bottom-4 right-4"><div className="w-8 h-8 rounded-full bg-black/5 flex items-center justify-center"><ArrowUpRight className="w-4 h-4 opacity-50" /></div></div>
+            </div>
+          );
+        })}
+        {(canCreate && activeFilter !== "Past Events") && (
+          <button onClick={() => { setEditingEvent(null); setIsFormOpen(true); }} className="p-5 rounded-2xl border-2 border-dashed border-white/10 flex flex-col items-center justify-center text-muted-foreground hover:bg-white/5 hover:text-white transition-all min-h-[160px] group">
+            <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center mb-3 group-hover:bg-[var(--primary)] group-hover:text-white transition-colors duration-300"><Plus className="w-5 h-5" /></div><span className="text-xs font-bold uppercase tracking-wider">New Event</span>
           </button>
-        ))}
-        <div className="ml-auto flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-full border border-white/10">
-          <span className="text-sm font-bold text-white">{filtered.length}</span>
-          <span className="text-xs text-muted-foreground uppercase tracking-wider">Events</span>
-        </div>
+        )}
       </div>
-
-      {/* Event Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        {filtered.map((event) => (
-          <div
-            key={event.id}
-            style={{ backgroundColor: event.color }}
-            className="rounded-3xl p-6 flex flex-col gap-4 min-h-[220px] cursor-pointer transform transition-all duration-300 hover:-translate-y-2 hover:shadow-[0_20px_40px_rgba(0,0,0,0.4)] group border border-transparent hover:border-white/20"
-          >
-            {/* Card Top */}
-            <div className="flex justify-between items-start">
-              <span 
-                className="text-[10px] font-extrabold tracking-widest px-3 py-1.5 rounded-full shadow-sm"
-                style={{ background: TYPE_COLORS[event.type]?.pill, color: TYPE_COLORS[event.type]?.text }}
-              >
-                {event.type}
-              </span>
-              <div className="flex flex-col items-center bg-black/10 rounded-xl px-3 py-1 shadow-inner">
-                <span className="text-[10px] font-bold text-slate-800 tracking-widest uppercase">{event.month}</span>
-                <span className="text-2xl font-black text-slate-900 leading-none">{event.day}</span>
-              </div>
-            </div>
-
-            {/* Card Title */}
-            <h3 className="text-2xl font-black text-slate-900 leading-tight mt-2 flex-1">
-              {event.title}
-            </h3>
-
-            {/* Card Bottom */}
-            <div className="flex justify-between items-end mt-4">
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-2 text-xs font-semibold text-slate-800">
-                  <Clock className="w-4 h-4 opacity-70" /> {event.time}
-                </div>
-                <div className="flex items-center gap-2 text-xs font-semibold text-slate-800">
-                  <MapPin className="w-4 h-4 opacity-70" /> {event.location}
-                </div>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-black/5 flex items-center justify-center group-hover:bg-black/10 transition-colors">
-                <ArrowUpRight className="w-5 h-5 text-slate-900" />
-              </div>
-            </div>
-          </div>
-        ))}
-
-        {/* Add New Placeholder Card */}
-        <div
-          onClick={() => setShowModal(true)}
-          className="rounded-3xl p-6 border-2 border-dashed border-white/20 flex flex-col items-center justify-center gap-3 min-h-[220px] cursor-pointer hover:bg-white/5 hover:border-[var(--primary)]/50 transition-all duration-300 group"
-        >
-          <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-[var(--primary)]/20 transition-colors">
-            <Plus className="w-6 h-6 text-muted-foreground group-hover:text-[var(--primary)]" />
-          </div>
-          <span className="text-sm font-bold text-muted-foreground tracking-wider group-hover:text-white transition-colors">NEW EVENT</span>
-        </div>
-      </div>
-
-      {filtered.length === 0 && (
-        <div className="text-center py-20">
-          <CalendarDays className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
-          <p className="text-muted-foreground font-medium text-lg">No {filter !== "ALL" ? filter.toLowerCase() : ""} events scheduled.</p>
-        </div>
-      )}
-
-      {/* Integrated Dialog Modal */}
-      <Dialog open={showModal} onOpenChange={setShowModal}>
-        <DialogContent className="sm:max-w-[425px] bg-[#0B0F1A] border-white/10 text-white p-0 overflow-hidden">
-          <div className="p-6 border-b border-white/10">
-            <DialogTitle className="text-xl font-black flex items-center gap-2">
-              <CalendarDays className="w-5 h-5 text-[var(--primary)]" /> Create New Event
-            </DialogTitle>
-          </div>
-
-          <form onSubmit={handleCreate} className="p-6 space-y-5">
-            <div className="space-y-2">
-              <Label className="text-[10px] font-bold text-gray-400 tracking-widest uppercase">Title</Label>
-              <Input 
-                required
-                value={form.title} 
-                onChange={e => setForm(f => ({ ...f, title: e.target.value }))} 
-                placeholder="Event name..." 
-                className="bg-white/5 border-white/10" 
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-[10px] font-bold text-gray-400 tracking-widest uppercase">Location</Label>
-              <Input 
-                value={form.location} 
-                onChange={e => setForm(f => ({ ...f, location: e.target.value }))} 
-                placeholder="Where?" 
-                className="bg-white/5 border-white/10" 
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-[10px] font-bold text-gray-400 tracking-widest uppercase">Date</Label>
-                <div className="flex gap-2">
-                  <select 
-                    value={form.month} 
-                    onChange={e => setForm(f => ({ ...f, month: e.target.value }))} 
-                    className="flex h-10 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm focus:outline-none focus:border-[var(--primary)]"
-                  >
-                    {MONTHS.map(m => <option key={m} className="bg-[#0B0F1A] text-white">{m}</option>)}
-                  </select>
-                  <Input 
-                    type="number" 
-                    min={1} max={31} 
-                    value={form.day} 
-                    onChange={e => setForm(f => ({ ...f, day: +e.target.value }))} 
-                    className="bg-white/5 border-white/10 w-20 text-center" 
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-[10px] font-bold text-gray-400 tracking-widest uppercase">Time</Label>
-                <Input 
-                  value={form.time} 
-                  onChange={e => setForm(f => ({ ...f, time: e.target.value }))} 
-                  placeholder="09:00 AM" 
-                  className="bg-white/5 border-white/10" 
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-[10px] font-bold text-gray-400 tracking-widest uppercase">Event Type</Label>
-              <select 
-                value={form.type} 
-                onChange={e => setForm(f => ({ ...f, type: e.target.value }))} 
-                className="flex h-10 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm focus:outline-none focus:border-[var(--primary)]"
-              >
-                <option className="bg-[#0B0F1A] text-white">MEETING</option>
-                <option className="bg-[#0B0F1A] text-white">SOCIAL</option>
-              </select>
-            </div>
-
-            <div className="space-y-2 pt-2">
-              <Label className="text-[10px] font-bold text-gray-400 tracking-widest uppercase">Card Color</Label>
-              <div className="flex gap-3">
-                {COLOR_OPTIONS.map(c => (
-                  <button
-                    type="button"
-                    key={c}
-                    onClick={() => setForm(f => ({ ...f, color: c }))}
-                    className={cn(
-                      "w-8 h-8 rounded-full transition-all duration-200 shadow-sm",
-                      form.color === c ? "ring-2 ring-[var(--primary)] ring-offset-2 ring-offset-[#0B0F1A] scale-110" : "hover:scale-110"
-                    )}
-                    style={{ backgroundColor: c }}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div className="pt-6 flex justify-end gap-3 border-t border-white/10">
-              <Button type="button" variant="ghost" onClick={() => setShowModal(false)} className="hover:bg-white/5">
-                Cancel
-              </Button>
-              <Button type="submit" className="bg-[var(--primary)] text-white hover:opacity-90 font-bold">
-                Create Event
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <EventForm open={isFormOpen} onOpenChange={setIsFormOpen} eventToEdit={editingEvent} onSuccess={fetchEvents} />
     </div>
   );
 }

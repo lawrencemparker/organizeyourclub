@@ -18,8 +18,9 @@ export function SecurityForm() {
   const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (formData.newPassword.length < 6) {
-      toast.error("Password must be at least 6 characters");
+    // Strictly require 8 characters
+    if (formData.newPassword.length < 8) {
+      toast.error("Password must be at least 8 characters.");
       return;
     }
 
@@ -52,10 +53,10 @@ export function SecurityForm() {
         <p className="text-sm text-muted-foreground">Manage your password and account security.</p>
       </div>
 
-      <div className="p-4 mb-6 rounded-lg bg-primary/5 border border-primary/20 flex gap-3">
-        <ShieldCheck className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+      <div className="p-4 mb-6 rounded-lg bg-[var(--primary)]/5 border border-[var(--primary)]/20 flex gap-3">
+        <ShieldCheck className="w-5 h-5 text-[var(--primary)] shrink-0 mt-0.5" />
         <div className="text-sm">
-          <p className="font-medium text-primary">Your account is secure</p>
+          <p className="font-medium text-[var(--primary)]">Your account is secure</p>
           <p className="text-muted-foreground mt-1">
             We recommend using a unique password that you don't use for other online accounts.
           </p>
@@ -74,17 +75,21 @@ export function SecurityForm() {
                 type={showPassword ? "text" : "password"}
                 value={formData.newPassword} 
                 onChange={(e) => setFormData({...formData, newPassword: e.target.value})}
-                className="pl-9 pr-10 glass-input" 
+                className="pl-9 pr-10 bg-white/5 border-white/10 focus-visible:ring-[var(--primary)]" 
                 placeholder="Enter new password"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-2.5 text-muted-foreground/50 hover:text-primary transition-colors"
+                className="absolute right-3 top-2.5 text-muted-foreground/50 hover:text-[var(--primary)] transition-colors"
               >
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
+            {/* Added Requirement Helper Text */}
+            <p className="text-[11px] text-muted-foreground/80 mt-1.5 leading-tight">
+              Minimum 8 characters. Must include lowercase, uppercase, digits, and symbols.
+            </p>
           </div>
 
           <div className="space-y-2">
@@ -96,7 +101,7 @@ export function SecurityForm() {
                 type={showPassword ? "text" : "password"}
                 value={formData.confirmPassword} 
                 onChange={(e) => setFormData({...formData, confirmPassword: e.target.value})}
-                className="pl-9 glass-input" 
+                className="pl-9 bg-white/5 border-white/10 focus-visible:ring-[var(--primary)]" 
                 placeholder="Confirm new password"
               />
             </div>
@@ -105,7 +110,7 @@ export function SecurityForm() {
         </div>
 
         <div className="pt-4">
-          <Button type="submit" variant="gradient" disabled={loading || !formData.newPassword}>
+          <Button type="submit" className="bg-[var(--primary)] hover:opacity-90 text-white" disabled={loading || !formData.newPassword}>
             {loading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />

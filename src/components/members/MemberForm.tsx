@@ -136,11 +136,12 @@ export function MemberForm({ open, onOpenChange, onSuccess, member }: { open: bo
             <div className="space-y-2">
               <Label className="text-xs font-bold text-gray-400 uppercase">Role</Label>
               <select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} className="flex h-10 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--primary)]">
-                <option value="Member" className="bg-[#0B0F1A]">Member</option>
+                <option value="Admin" className="bg-[#0B0F1A]">Admin</option>
                 <option value="President" className="bg-[#0B0F1A]">President</option>
                 <option value="Vice President" className="bg-[#0B0F1A]">Vice President</option>
                 <option value="Social Chair" className="bg-[#0B0F1A]">Social Chair</option>
                 <option value="Rush Chair" className="bg-[#0B0F1A]">Rush Chair</option>
+                <option value="Member" className="bg-[#0B0F1A]">Member</option>
               </select>
             </div>
             <div className="space-y-2">

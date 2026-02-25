@@ -40,11 +40,24 @@ export function LoginPage() {
       const { data: authData, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
 
-      // NEW: INTERCEPT SUSPENDED ORGS
       if (authData.user) {
-        const { data: profile } = await supabase.from('profiles').select('organization_id').eq('id', authData.user.id).single();
-        if (profile?.organization_id) {
-          const { data: org } = await supabase.from('organizations').select('is_suspended').eq('id', profile.organization_id).single();
+        // 1. Fetch exact role & org status directly from the members table
+        const { data: memberData } = await supabase
+          .from('members')
+          .select(`
+            role,
+            org_id,
+            organizations (is_suspended)
+          `)
+          .ilike('email', email)
+          .maybeSingle();
+
+        if (memberData) {
+          // 2. CRITICAL RBAC FIX: Force-sync their Role to the Profiles table so the Menu unlocks!
+          await supabase.from('profiles').update({ role: memberData.role }).eq('id', authData.user.id);
+
+          // 3. Intercept suspended orgs
+          const org = Array.isArray(memberData.organizations) ? memberData.organizations[0] : memberData.organizations;
           if (org?.is_suspended) {
             await supabase.auth.signOut();
             throw new Error("Please contact App Administrator for access.");
@@ -65,42 +78,29 @@ export function LoginPage() {
     setSendingSupport(true);
 
     try {
-      // Find the user's organization in the members table
-      const { data: memberData } = await supabase
-        .from('members')
-        .select('org_id')
-        .eq('email', supportEmail.trim().toLowerCase())
-        .maybeSingle();
-
-      // NEW: INTERCEPT SUSPENDED ORGS BEFORE SENDING LINK
-      if (memberData?.org_id) {
-        const { data: org } = await supabase.from('organizations').select('is_suspended').eq('id', memberData.org_id).single();
-        if (org?.is_suspended) {
-          toast.error("Please contact App Administrator for access.");
-          setSendingSupport(false);
-          return;
-        }
-      }
+      const emailLower = supportEmail.trim().toLowerCase();
 
       // 1. Reset database state to 'Pending' via SQL function
       const { data: isValidMember, error: rpcError } = await supabase.rpc('request_member_access', {
-        email_input: supportEmail.trim().toLowerCase()
+        email_input: emailLower
       });
 
       if (rpcError || !isValidMember) {
         toast.error("No account found with that email address.");
+        setSendingSupport(false);
         return;
       }
 
-      // 2. Use resetPasswordForEmail - it is higher priority for custom SMTP
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
-        supportEmail.trim().toLowerCase(),
-        {
+      // 2. Call the public Edge Function to wipe ghost data AND send the email seamlessly
+      const { error: invokeError, data } = await supabase.functions.invoke("request-access", {
+        body: {
+          email: emailLower,
           redirectTo: `${window.location.origin}/login`,
-        }
-      );
+        },
+      });
 
-      if (resetError) throw resetError;
+      if (invokeError) throw invokeError;
+      if (data?.error) throw new Error(data.error);
 
       setIsSuccess(true);
       setSupportEmail("");

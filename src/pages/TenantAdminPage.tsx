@@ -12,6 +12,8 @@ import { Button } from "@/components/ui/button";
 interface Organization {
   id: string;
   name: string;
+  slug?: string; 
+  owner_id?: string;
   chapter: string;
   admin_name: string;
   admin_email: string;
@@ -19,6 +21,10 @@ interface Organization {
   monthly_fee?: number;
   is_suspended?: boolean;
   created_at?: string;
+  building_name?: string;
+  floor_number?: number;
+  unit_number?: number;
+  grid_index?: number;
 }
 
 const SUPER_ADMIN_EMAIL = "lawrencemparker@yahoo.com";
@@ -32,15 +38,18 @@ const BUILDINGS = [
   { id: 'D', name: 'Copperfield D', color: 'bg-[#8D4004]', accent: 'bg-[#7A3603]' },
 ];
 
+const generateSlug = (name: string) => {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');   
+};
+
 export function TenantAdminPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
-  
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [activeUnitIndex, setActiveUnitIndex] = useState<number | null>(null);
   const [formData, setFormData] = useState<Partial<Organization>>({});
+  const [activeLocation, setActiveLocation] = useState<{index: number, building: string, floor: number, unit: number} | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -64,21 +73,18 @@ export function TenantAdminPage() {
     }
   };
 
-  const handleWindowClick = (index: number) => {
-    const org = organizations[index];
-    setActiveUnitIndex(index);
+  const handleWindowClick = (unitIndex: number, bIndex: number, floorIndex: number) => {
+    const org = organizations.find(o => o.grid_index === unitIndex);
+    const buildingName = BUILDINGS[bIndex].name;
+    const floorNumber = floorIndex + 1; 
+    const unitNumber = unitIndex + 1;
+
+    setActiveLocation({ index: unitIndex, building: buildingName, floor: floorNumber, unit: unitNumber });
+
     if (org) {
       setFormData(org);
     } else {
-      setFormData({ 
-        name: "", 
-        chapter: "", 
-        admin_name: "", 
-        admin_email: "", 
-        phone: "", 
-        monthly_fee: 250, 
-        is_suspended: false 
-      });
+      setFormData({ name: "", chapter: "", admin_name: "", admin_email: "", phone: "", monthly_fee: 250, is_suspended: false });
     }
     setIsDialogOpen(true);
   };
@@ -86,21 +92,92 @@ export function TenantAdminPage() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name) return toast.error("Organization Name is required");
+    if (!user) return toast.error("Authentication required");
+    if (!activeLocation) return toast.error("Location error");
+
+    const locationData = {
+      grid_index: activeLocation.index,
+      building_name: activeLocation.building,
+      floor_number: activeLocation.floor,
+      unit_number: activeLocation.unit
+    };
+
+    let newOrgId: string | null = null;
 
     try {
       if (formData.id) {
-        const { error } = await supabase.from('organizations').update(formData).eq('id', formData.id);
+        // ── UPDATE existing tenant ─────────────────────────────────────────
+        const payload = { ...formData, ...locationData };
+        const { error } = await supabase.from('organizations').update(payload).eq('id', formData.id);
         if (error) throw error;
         toast.success("Tenant updated successfully");
+
       } else {
-        const { error } = await supabase.from('organizations').insert([formData]);
-        if (error) throw error;
-        toast.success("New tenant registered");
+        // ── CREATE new tenant ──────────────────────────────────────────────
+        const payload = {
+          ...formData,
+          ...locationData,
+          slug: generateSlug(formData.name),
+          owner_id: user.id
+        };
+
+        // Step 1 – Insert org
+        const { data: newOrg, error: orgError } = await supabase
+          .from('organizations')
+          .insert([payload])
+          .select()
+          .single();
+        if (orgError) throw orgError;
+        newOrgId = newOrg.id;
+
+        if (newOrg && formData.admin_email) {
+          // Step 2 – Insert pending member row
+          const { error: memberError } = await supabase.from('members').insert([{
+            org_id: newOrg.id,
+            full_name: formData.admin_name || "Organization Admin",
+            email: formData.admin_email,
+            status: 'Pending',
+            role: 'admin'
+          }]);
+          if (memberError) throw memberError;
+
+          const orgFullName = formData.chapter
+            ? `${formData.name} - ${formData.chapter}`
+            : formData.name;
+
+          // Step 3 – Invite via Edge Function so {{ .Data.organization_name }}
+          // is correctly written into raw_user_meta_data before the email is
+          // sent. signInWithOtp() ignores `data` for existing users.
+          const { error: inviteError } = await supabase.functions.invoke("invite-org-admin", {
+            body: {
+              email: formData.admin_email,
+              orgFullName,
+              redirectTo: `${window.location.origin}/`,
+            },
+          });
+          if (inviteError) throw inviteError;
+        }
+
+        toast.success("New tenant registered and admin invited!");
       }
+
       setIsDialogOpen(false);
       fetchOrganizations();
+
     } catch (error: any) {
-      toast.error(error.message || "Failed to save tenant");
+      // ── Rollback: clean up org + member rows if a later step failed.
+      // Without this, retrying causes a 409 unique_grid_index conflict.
+      if (newOrgId) {
+        await supabase.from('members').delete().eq('org_id', newOrgId);
+        await supabase.from('organizations').delete().eq('id', newOrgId);
+        newOrgId = null;
+      }
+
+      if (error.message?.includes('unique_grid_index')) {
+        toast.error("This window is already occupied by another tenant.");
+      } else {
+        toast.error(error.message || "Failed to save tenant");
+      }
     }
   };
 
@@ -135,7 +212,7 @@ export function TenantAdminPage() {
     }
   };
 
-  const occupiedCount = organizations.length;
+  const occupiedCount = organizations.filter(org => org.grid_index !== undefined && org.grid_index !== null).length;
   const vacantCount = TOTAL_UNITS - occupiedCount;
   const occupancyRate = Math.round((occupiedCount / TOTAL_UNITS) * 100);
 
@@ -191,15 +268,18 @@ export function TenantAdminPage() {
                     <div key={floor} className="grid grid-cols-3 gap-3">
                       {[0, 1, 2].map(windowCol => {
                         if (floor === 0 && windowCol === 2) return null;
-                        const unitIndex = startIndex + (floor * 3) + windowCol;
-                        const org = organizations[unitIndex];
+                        
+                        const localIndex = floor === 0 ? windowCol : (floor - 1) * 3 + 2 + windowCol;
+                        const unitIndex = startIndex + localIndex;
+                        
+                        const org = organizations.find(o => o.grid_index === unitIndex);
                         const isOccupied = !!org;
                         const isSuspended = org?.is_suspended;
 
                         return (
                           <button
                             key={windowCol}
-                            onClick={() => handleWindowClick(unitIndex)}
+                            onClick={() => handleWindowClick(unitIndex, bIndex, floor)}
                             className={`
                               relative h-16 rounded-t-md border-b-4 flex flex-col items-center justify-center transition-all group overflow-hidden
                               ${!isOccupied 
@@ -250,7 +330,7 @@ export function TenantAdminPage() {
                   {formData.id ? "Edit Tenant" : "Register New Tenant"}
                 </DialogTitle>
                 <p className="text-sm text-slate-500 font-medium">
-                  {activeUnitIndex !== null && `Unit ${activeUnitIndex + 1} • Floor ${Math.floor((activeUnitIndex % UNITS_PER_BUILDING) / 3) + 1}`}
+                  {activeLocation && `Unit ${activeLocation.unit} • Floor ${activeLocation.floor} • ${activeLocation.building}`}
                   {formData.is_suspended && <span className="ml-2 text-red-600 font-bold">(SUSPENDED)</span>}
                 </p>
               </div>
@@ -261,7 +341,6 @@ export function TenantAdminPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1 col-span-2">
                 <Label className="text-slate-700 flex items-center gap-2"><Building2 className="w-3 h-3 text-rose-700" /> Organization Name</Label>
-                {/* FIXED: Added text-slate-900 font-medium to all inputs */}
                 <Input value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} className="border-rose-200 focus-visible:ring-rose-500 bg-white text-slate-900 font-medium" placeholder="e.g. Acme Corp" required />
               </div>
               
