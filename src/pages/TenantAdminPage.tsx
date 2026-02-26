@@ -276,7 +276,13 @@ export function TenantAdminPage() {
         </div>
       </div>
 
-      <div className="flex-1 flex items-end justify-center gap-4 pb-0 z-10 px-4 mt-8">
+      {/* Added overflow-x-auto for horizontal mobile swiping.
+  Added min-w-max to prevent buildings from being crushed. 
+*/}
+<div className="flex-1 flex items-end justify-start md:justify-center gap-6 pb-4 z-10 px-4 mt-8 overflow-x-auto w-full custom-scrollbar">
+  <div className="flex gap-6 min-w-max px-4">
+    {BUILDINGS.map((building, bIndex) => {
+       // ... existing building mapping code ...
         {BUILDINGS.map((building, bIndex) => {
           const startIndex = bIndex * UNITS_PER_BUILDING;
           
