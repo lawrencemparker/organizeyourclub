@@ -258,7 +258,7 @@ export function LandingPage() {
             <DialogHeader className="mb-6 text-left">
               <DialogTitle className="text-2xl font-black">Get Started Today</DialogTitle>
               <DialogDescription className="text-muted-foreground">
-                We'll set up your organization's custom workspace. Fill out the details below and we will be in touch shortly.
+                Want to learn more about how we can streamline your chapter's operations? Fill out the details below to request more information or a personalized demo.
               </DialogDescription>
             </DialogHeader>
 
