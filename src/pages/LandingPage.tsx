@@ -1,62 +1,81 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { 
   ShieldCheck, Users, Calendar, Wallet, FileText, 
-  Mail, ArrowRight, LayoutDashboard, CheckCircle2, Cloud
+  Mail, ArrowRight, LayoutDashboard, CheckCircle2, Cloud, Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogDescription 
+} from "@/components/ui/dialog";
 
 export function LandingPage() {
-  const features = [
-    {
-      title: "Member Roster & Roles",
-      description: "Manage your entire organization in one place. Assign custom roles, track active statuses, and maintain a centralized directory.",
-      icon: Users,
-      color: "text-blue-400",
-      bg: "bg-blue-400/10"
-    },
-    {
-      title: "Dynamic Event Board",
-      description: "Schedule meetings, socials, and workshops with beautiful color-coded cards. Automatically filters past and future events.",
-      icon: Calendar,
-      color: "text-emerald-400",
-      bg: "bg-emerald-400/10"
-    },
-    {
-      title: "Treasury & Finances",
-      description: "Keep a transparent ledger of all income and expenses. Track current balances, categorize transactions, and export to CSV.",
-      icon: Wallet,
-      color: "text-amber-400",
-      bg: "bg-amber-400/10"
-    },
-    {
-      title: "Cloud Document Hub",
-      description: "A secure, centralized repository for chapter files. Seamlessly integrates with Google Drive to attach living documents.",
-      icon: Cloud,
-      color: "text-indigo-400",
-      bg: "bg-indigo-400/10"
-    },
-    {
-      title: "Requirement Compliance",
-      description: "Never miss a deadline. Track university and national chapter compliance tasks with visual progress bars and overdue alerts.",
-      icon: FileText,
-      color: "text-rose-400",
-      bg: "bg-rose-400/10"
-    },
-    {
-      title: "Bulk Communications",
-      description: "Send professional, branded emails directly to your members. Features a complete audit trail and history log of all outgoing messages.",
-      icon: Mail,
-      color: "text-teal-400",
-      bg: "bg-teal-400/10"
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Form State
+  const [formData, setFormData] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    source: "",
+    message: ""
+  });
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+
+    try {
+      // TODO: Connect to Formspree or Web3Forms
+      // Example: 
+      // await fetch("https://formspree.io/f/YOUR_ENDPOINT", {
+      //   method: "POST",
+      //   headers: { "Content-Type": "application/json" },
+      //   body: JSON.stringify(formData)
+      // });
+
+      // Simulating a network request for the UI
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
+      toast.success("Message sent! We will be in touch shortly.");
+      setIsModalOpen(false);
+      setFormData({ name: "", email: "", phone: "", source: "", message: "" });
+    } catch (error) {
+      toast.error("Failed to send message. Please try again.");
+    } finally {
+      setIsSubmitting(false);
     }
+  };
+
+  const features = [
+    { title: "Member Roster & Roles", description: "Manage your entire organization in one place. Assign custom roles, track active statuses, and maintain a centralized directory.", icon: Users, color: "text-blue-400", bg: "bg-blue-400/10" },
+    { title: "Dynamic Event Board", description: "Schedule meetings, socials, and workshops with beautiful color-coded cards. Automatically filters past and future events.", icon: Calendar, color: "text-emerald-400", bg: "bg-emerald-400/10" },
+    { title: "Treasury & Finances", description: "Keep a transparent ledger of all income and expenses. Track current balances, categorize transactions, and export to CSV.", icon: Wallet, color: "text-amber-400", bg: "bg-amber-400/10" },
+    { title: "Cloud Document Hub", description: "A secure, centralized repository for chapter files. Seamlessly integrates with Google Drive to attach living documents.", icon: Cloud, color: "text-indigo-400", bg: "bg-indigo-400/10" },
+    { title: "Requirement Compliance", description: "Never miss a deadline. Track university and national chapter compliance tasks with visual progress bars and overdue alerts.", icon: FileText, color: "text-rose-400", bg: "bg-rose-400/10" },
+    { title: "Bulk Communications", description: "Send professional, branded emails directly to your members. Features a complete audit trail and history log of all outgoing messages.", icon: Mail, color: "text-teal-400", bg: "bg-teal-400/10" }
   ];
 
   return (
     <div className="min-h-screen bg-[#0B0F1A] text-white selection:bg-[var(--primary)] selection:text-white overflow-hidden">
       
       {/* NAVIGATION */}
-      <nav className="fixed top-0 w-full z-50 border-b border-white/5 bg-[#0B0F1A]/80 backdrop-blur-md">
+      <nav className="fixed top-0 w-full z-40 border-b border-white/5 bg-[#0B0F1A]/80 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-[var(--primary)] flex items-center justify-center font-black text-white">
@@ -68,8 +87,8 @@ export function LandingPage() {
             <Link to="/login" className="text-sm font-medium text-muted-foreground hover:text-white transition-colors">
               Sign In
             </Link>
-            <Button asChild className="bg-[var(--primary)] text-white hover:opacity-90 rounded-full px-6">
-              <Link to="/register">Get Started</Link>
+            <Button onClick={() => setIsModalOpen(true)} className="bg-[var(--primary)] text-white hover:opacity-90 rounded-full px-6">
+              Get Started
             </Button>
           </div>
         </div>
@@ -100,8 +119,8 @@ export function LandingPage() {
           </p>
           
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Button asChild size="lg" className="h-14 px-8 text-base bg-[var(--primary)] text-white hover:opacity-90 rounded-full shadow-[0_0_40px_rgba(var(--primary-rgb),0.3)] w-full sm:w-auto">
-              <Link to="/register">Start Organizing Free <ArrowRight className="w-4 h-4 ml-2" /></Link>
+            <Button onClick={() => setIsModalOpen(true)} size="lg" className="h-14 px-8 text-base bg-[var(--primary)] text-white hover:opacity-90 rounded-full shadow-[0_0_40px_rgba(var(--primary-rgb),0.3)] w-full sm:w-auto">
+              Start Organizing Free <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
             <Button asChild size="lg" variant="outline" className="h-14 px-8 text-base border-white/10 hover:bg-white/5 text-white rounded-full w-full sm:w-auto">
               <Link to="/login">View Live Demo</Link>
@@ -110,16 +129,15 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* DASHBOARD PREVIEW (MOCKUP) */}
+      {/* DASHBOARD PREVIEW */}
       <section className="px-6 pb-24">
         <div className="max-w-6xl mx-auto">
           <div className="glass-card rounded-2xl border border-white/10 p-2 shadow-2xl bg-gradient-to-b from-white/5 to-transparent relative overflow-hidden">
              <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-10 flex items-center justify-center">
-                <Button variant="secondary" className="bg-white text-black hover:bg-gray-200 rounded-full font-bold shadow-2xl">
+                <Button variant="secondary" className="bg-white text-black hover:bg-gray-200 rounded-full font-bold shadow-2xl" onClick={() => setIsModalOpen(true)}>
                    <LayoutDashboard className="w-4 h-4 mr-2" /> Explore the Dashboard
                 </Button>
              </div>
-             {/* Abstract representation of the UI to look cool behind the blur */}
              <div className="h-[400px] w-full rounded-xl bg-[#0B0F1A] border border-white/5 p-6 flex gap-6">
                 <div className="w-48 hidden md:flex flex-col gap-3">
                    <div className="h-4 w-24 bg-white/10 rounded mb-4" />
@@ -154,9 +172,7 @@ export function LandingPage() {
                     <Icon className="w-6 h-6" />
                   </div>
                   <h3 className="text-xl font-bold mb-3">{feature.title}</h3>
-                  <p className="text-muted-foreground text-sm leading-relaxed">
-                    {feature.description}
-                  </p>
+                  <p className="text-muted-foreground text-sm leading-relaxed">{feature.description}</p>
                 </div>
               );
             })}
@@ -164,10 +180,9 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* RBAC / SECURITY SPOTLIGHT */}
+      {/* RBAC SPOTLIGHT */}
       <section className="py-24 px-6 border-t border-white/5 relative overflow-hidden">
         <div className="absolute right-0 top-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-[var(--primary)]/10 blur-[150px] rounded-full pointer-events-none" />
-        
         <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-center gap-16">
           <div className="flex-1 space-y-8 relative z-10">
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold uppercase tracking-widest text-emerald-400">
@@ -177,15 +192,10 @@ export function LandingPage() {
               Strict isolation and <br/>granular permissions.
             </h2>
             <p className="text-lg text-muted-foreground leading-relaxed">
-              Not every member needs access to the treasury, and not every officer needs to edit the roster. Our advanced Role-Based Access Control (RBAC) lets you dial in exact permissions.
+              Not every member needs access to the treasury, and not every officer needs to edit the roster. Our advanced Role-Based Access Control lets you dial in exact permissions.
             </p>
-            
             <ul className="space-y-4">
-              {[
-                "Strict CRUD (Create, Read, Update, Delete) matrix.",
-                "Organization-level data isolation prevents ghost-data bleeding.",
-                "Real-time URL routing security to prevent unauthorized access."
-              ].map((item, i) => (
+              {["Strict CRUD (Create, Read, Update, Delete) matrix.", "Organization-level data isolation prevents ghost-data bleeding.", "Real-time URL routing security to prevent unauthorized access."].map((item, i) => (
                 <li key={i} className="flex items-start gap-3">
                   <CheckCircle2 className="w-6 h-6 text-[var(--primary)] shrink-0" />
                   <span className="text-muted-foreground">{item}</span>
@@ -193,19 +203,12 @@ export function LandingPage() {
               ))}
             </ul>
           </div>
-          
           <div className="flex-1 w-full">
             <div className="glass-card p-6 rounded-2xl border border-white/10 shadow-2xl relative">
-              {/* Mockup of the Permissions Matrix we built */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between border-b border-white/5 pb-4">
-                  <div>
-                    <p className="font-bold text-sm">Boomer Parker</p>
-                    <p className="text-xs text-muted-foreground">Member</p>
-                  </div>
-                  <div className="px-2 py-1 rounded bg-[var(--primary)]/20 text-[var(--primary)] text-xs font-bold border border-[var(--primary)]/30">
-                    Permissions Saved
-                  </div>
+                  <div><p className="font-bold text-sm">Boomer Parker</p><p className="text-xs text-muted-foreground">Member</p></div>
+                  <div className="px-2 py-1 rounded bg-[var(--primary)]/20 text-[var(--primary)] text-xs font-bold border border-[var(--primary)]/30">Permissions Saved</div>
                 </div>
                 {[
                   { name: "Finances", c: false, r: false, u: false, d: false },
@@ -216,9 +219,7 @@ export function LandingPage() {
                     <span className="text-sm font-medium">{row.name}</span>
                     <div className="flex gap-2">
                        {['Read', 'Create', 'Update'].map((action, j) => (
-                         <div key={j} className={cn("w-6 h-6 rounded flex items-center justify-center border text-[10px] font-bold", row.c || row.r ? "bg-emerald-500/20 border-emerald-500/30 text-emerald-400" : "bg-white/5 border-transparent text-muted-foreground")}>
-                            {action[0]}
-                         </div>
+                         <div key={j} className={cn("w-6 h-6 rounded flex items-center justify-center border text-[10px] font-bold", row.c || row.r ? "bg-emerald-500/20 border-emerald-500/30 text-emerald-400" : "bg-white/5 border-transparent text-muted-foreground")}>{action[0]}</div>
                        ))}
                     </div>
                   </div>
@@ -234,8 +235,8 @@ export function LandingPage() {
         <div className="max-w-3xl mx-auto space-y-8">
           <h2 className="text-4xl md:text-5xl font-black tracking-tight">Ready to transform your club?</h2>
           <p className="text-xl text-muted-foreground">Join the organizations that have already streamlined their operations, secured their data, and engaged their members.</p>
-          <Button asChild size="lg" className="h-14 px-10 text-lg bg-[var(--primary)] text-white hover:opacity-90 rounded-full shadow-[0_0_40px_rgba(var(--primary-rgb),0.3)]">
-            <Link to="/register">Create Your Organization</Link>
+          <Button onClick={() => setIsModalOpen(true)} size="lg" className="h-14 px-10 text-lg bg-[var(--primary)] text-white hover:opacity-90 rounded-full shadow-[0_0_40px_rgba(var(--primary-rgb),0.3)]">
+            Create Your Organization
           </Button>
         </div>
       </section>
@@ -244,6 +245,94 @@ export function LandingPage() {
         <p>© {new Date().getFullYear()} Organize Your Club. All rights reserved.</p>
       </footer>
 
+      {/* --- LEAD CAPTURE MODAL --- */}
+      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <DialogContent className="sm:max-w-[700px] bg-[#0B0F1A] border-white/10 text-white p-0 overflow-hidden">
+          
+          {/* Subtle accent header matching the app theme */}
+          <div className="h-2 w-full bg-[var(--primary)] relative">
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent opacity-50" />
+          </div>
+
+          <div className="p-6 sm:p-8">
+            <DialogHeader className="mb-6 text-left">
+              <DialogTitle className="text-2xl font-black">Get Started Today</DialogTitle>
+              <DialogDescription className="text-muted-foreground">
+                We'll set up your organization's custom workspace. Fill out the details below and we will be in touch shortly.
+              </DialogDescription>
+            </DialogHeader>
+
+            <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              
+              {/* Left Column */}
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Name <span className="text-[var(--primary)]">*</span></Label>
+                  <Input 
+                    name="name" value={formData.name} onChange={handleInputChange} required
+                    placeholder="Jane Doe" 
+                    className="bg-white/5 border-white/10 text-white focus-visible:ring-[var(--primary)]"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Email Address <span className="text-[var(--primary)]">*</span></Label>
+                  <Input 
+                    name="email" type="email" value={formData.email} onChange={handleInputChange} required
+                    placeholder="jane@university.edu" 
+                    className="bg-white/5 border-white/10 text-white focus-visible:ring-[var(--primary)]"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Phone Number</Label>
+                  <Input 
+                    name="phone" type="tel" value={formData.phone} onChange={handleInputChange}
+                    placeholder="(555) 123-4567" 
+                    className="bg-white/5 border-white/10 text-white focus-visible:ring-[var(--primary)]"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">How did you find us?</Label>
+                  <Input 
+                    name="source" value={formData.source} onChange={handleInputChange}
+                    placeholder="Google, Referral, etc." 
+                    className="bg-white/5 border-white/10 text-white focus-visible:ring-[var(--primary)]"
+                  />
+                </div>
+              </div>
+
+              {/* Right Column */}
+              <div className="flex flex-col">
+                <div className="space-y-2 flex-1 flex flex-col">
+                  <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Message</Label>
+                  <textarea 
+                    name="message" value={formData.message} onChange={handleInputChange}
+                    placeholder="Tell us a little about your organization and how we can help..."
+                    className="flex-1 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] resize-none min-h-[150px]"
+                  />
+                </div>
+              </div>
+
+              {/* Submit Button spanning both columns on mobile, right aligned on desktop */}
+              <div className="md:col-span-2 pt-4 flex justify-end border-t border-white/5 mt-2">
+                <Button 
+                  type="button" variant="ghost" onClick={() => setIsModalOpen(false)} 
+                  className="mr-3 text-muted-foreground hover:text-white"
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={isSubmitting} className="bg-[var(--primary)] text-white hover:opacity-90 min-w-[140px]">
+                  {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                  {isSubmitting ? "Sending..." : "Submit Inquiry"}
+                </Button>
+              </div>
+
+            </form>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

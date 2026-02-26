@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Loader2, Lock, Mail, HelpCircle, Send, CheckCircle2 } from "lucide-react";
+import { Loader2, HelpCircle, Send, CheckCircle2, Building2, ChevronRight } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -27,11 +27,16 @@ export function LoginPage() {
   const [sendingSupport, setSendingSupport] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
+  // Multi-Tenant State
+  const [showOrgPicker, setShowOrgPicker] = useState(false);
+  const [userOrgs, setUserOrgs] = useState<any[]>([]);
+  const [tempUserId, setTempUserId] = useState<string | null>(null);
+
   useEffect(() => {
-    if (user) {
-      navigate("/");
+    if (user && !showOrgPicker) {
+      navigate("/overview");
     }
-  }, [user, navigate]);
+  }, [user, navigate, showOrgPicker]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,33 +46,62 @@ export function LoginPage() {
       if (error) throw error;
 
       if (authData.user) {
-        // 1. Fetch exact role & org status directly from the members table
+        setTempUserId(authData.user.id);
+        
+        // Fetch ALL memberships for this user
         const { data: memberData } = await supabase
           .from('members')
           .select(`
             role,
             org_id,
-            organizations (is_suspended)
+            organizations (id, name, chapter, is_suspended)
           `)
-          .ilike('email', email)
-          .maybeSingle();
+          .ilike('email', email);
 
-        if (memberData) {
-          // 2. CRITICAL RBAC FIX: Force-sync their Role to the Profiles table so the Menu unlocks!
-          await supabase.from('profiles').update({ role: memberData.role }).eq('id', authData.user.id);
-
-          // 3. Intercept suspended orgs
-          const org = Array.isArray(memberData.organizations) ? memberData.organizations[0] : memberData.organizations;
-          if (org?.is_suspended) {
-            await supabase.auth.signOut();
-            throw new Error("Please contact App Administrator for access.");
+        if (memberData && memberData.length > 0) {
+          if (memberData.length === 1) {
+            // Single Tenant - Auto Login
+            await handleSelectOrg(memberData[0], authData.user.id);
+          } else {
+            // Multi-Tenant - Show Picker
+            setUserOrgs(memberData);
+            setShowOrgPicker(true);
+            setLoading(false);
+            return; 
           }
+        } else {
+          navigate("/overview"); 
         }
       }
-
-      navigate("/"); 
     } catch (err: any) {
       toast.error(err.message || "Invalid login credentials");
+      setLoading(false);
+    }
+  };
+
+  const handleSelectOrg = async (memberRecord: any, currentUserId: string | null = user?.id) => {
+    try {
+      setLoading(true);
+      const org = Array.isArray(memberRecord.organizations) ? memberRecord.organizations[0] : memberRecord.organizations;
+      
+      if (org?.is_suspended) {
+        await supabase.auth.signOut();
+        setShowOrgPicker(false);
+        throw new Error("This organization is suspended. Please contact support.");
+      }
+
+      if (currentUserId) {
+        // Sync active state to Profiles table
+        await supabase.from('profiles').update({ 
+          role: memberRecord.role,
+          organization_id: memberRecord.org_id
+        }).eq('id', currentUserId);
+      }
+
+      setShowOrgPicker(false);
+      navigate("/overview");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to access organization");
     } finally {
       setLoading(false);
     }
@@ -80,7 +114,6 @@ export function LoginPage() {
     try {
       const emailLower = supportEmail.trim().toLowerCase();
 
-      // 1. Reset database state to 'Pending' via SQL function
       const { data: isValidMember, error: rpcError } = await supabase.rpc('request_member_access', {
         email_input: emailLower
       });
@@ -91,11 +124,10 @@ export function LoginPage() {
         return;
       }
 
-      // 2. Call the public Edge Function to wipe ghost data AND send the email seamlessly
       const { error: invokeError, data } = await supabase.functions.invoke("request-access", {
         body: {
           email: emailLower,
-          redirectTo: `${window.location.origin}/login`,
+          redirectTo: "https://organizeyourclub.com/overview",
         },
       });
 
@@ -113,52 +145,99 @@ export function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-[#0B0F1A]">
-      <div className="w-full max-w-md glass-card p-8 space-y-8 border-white/10">
-        <div className="text-center">
-          <h1 className="text-3xl font-bold tracking-tight mb-2 text-white">Welcome Back</h1>
-          <p className="text-muted-foreground text-sm font-medium">Enter your credentials to access your organization</p>
-        </div>
-
-        <form onSubmit={handleLogin} className="space-y-6">
-          <div className="space-y-2">
-            <Label htmlFor="email" className="text-gray-400 text-xs font-bold uppercase tracking-wider">Email Address</Label>
-            <Input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="bg-white/5 border-white/10 text-white h-11"
-              required
-            />
+      <div className="w-full max-w-md glass-card p-8 space-y-8 border-white/10 relative">
+        
+        {/* ORGANIZATION PICKER OVERLAY */}
+        {showOrgPicker ? (
+          <div className="absolute inset-0 bg-[#0B0F1A] rounded-2xl z-20 p-8 flex flex-col">
+            <div className="text-center mb-6">
+              <h2 className="text-2xl font-bold tracking-tight text-white mb-2">Select Organization</h2>
+              <p className="text-muted-foreground text-sm font-medium">Choose which workspace to access</p>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar pr-2">
+              {userOrgs.map((orgMember, idx) => {
+                const org = Array.isArray(orgMember.organizations) ? orgMember.organizations[0] : orgMember.organizations;
+                if (!org) return null;
+                
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => handleSelectOrg(orgMember, tempUserId)}
+                    className="w-full flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-[var(--primary)]/50 transition-all group text-left"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-lg bg-[var(--primary)]/20 text-[var(--primary)] flex items-center justify-center font-bold">
+                        {org.name.substring(0,2).toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="font-bold text-white text-sm">{org.name}</p>
+                        <p className="text-[11px] text-muted-foreground capitalize mt-0.5">{orgMember.role} Access</p>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-white transition-colors" />
+                  </button>
+                );
+              })}
+            </div>
+            
+            <Button 
+              variant="ghost" 
+              onClick={() => { setShowOrgPicker(false); supabase.auth.signOut(); }}
+              className="mt-6 w-full text-muted-foreground hover:text-white border border-white/10"
+            >
+              Cancel Login
+            </Button>
           </div>
+        ) : (
+          <>
+            <div className="text-center">
+              <h1 className="text-3xl font-bold tracking-tight mb-2 text-white">Welcome Back</h1>
+              <p className="text-muted-foreground text-sm font-medium">Enter your credentials to access your organization</p>
+            </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="password" text-gray-400 className="text-xs font-bold uppercase tracking-wider">Password</Label>
-            <Input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="bg-white/5 border-white/10 text-white h-11"
-              required
-            />
-          </div>
+            <form onSubmit={handleLogin} className="space-y-6">
+              <div className="space-y-2">
+                <Label htmlFor="email" className="text-gray-400 text-xs font-bold uppercase tracking-wider">Email Address</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="bg-white/5 border-white/10 text-white h-11"
+                  required
+                />
+              </div>
 
-          <Button type="submit" className="w-full bg-[var(--primary)] text-white font-bold h-11" disabled={loading}>
-            {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Sign In"}
-          </Button>
-        </form>
+              <div className="space-y-2">
+                <Label htmlFor="password" text-gray-400 className="text-xs font-bold uppercase tracking-wider">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="bg-white/5 border-white/10 text-white h-11"
+                  required
+                />
+              </div>
 
-        <div className="pt-6 border-t border-white/5 text-center">
-          <button 
-            type="button"
-            onClick={() => { setIsSuccess(false); setIsSupportOpen(true); }}
-            className="inline-flex items-center gap-2 text-[var(--primary)] hover:underline text-sm font-medium"
-          >
-            <HelpCircle className="w-4 h-4" />
-            Locked out or need access?
-          </button>
-        </div>
+              <Button type="submit" className="w-full bg-[var(--primary)] text-white font-bold h-11" disabled={loading}>
+                {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Sign In"}
+              </Button>
+            </form>
+
+            <div className="pt-6 border-t border-white/5 text-center">
+              <button 
+                type="button"
+                onClick={() => { setIsSuccess(false); setIsSupportOpen(true); }}
+                className="inline-flex items-center gap-2 text-[var(--primary)] hover:underline text-sm font-medium"
+              >
+                <HelpCircle className="w-4 h-4" />
+                Locked out or need access?
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       <Dialog open={isSupportOpen} onOpenChange={setIsSupportOpen}>

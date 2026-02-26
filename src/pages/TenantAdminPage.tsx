@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { Building2, Users, Home, Key, User, Trash2, X, DollarSign, Ban, Mail, Phone } from "lucide-react";
+import { Building2, Users, Home, Key, User, Trash2, Ban, Mail, Phone, DollarSign } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -146,8 +146,7 @@ export function TenantAdminPage() {
             : formData.name;
 
           // Step 3 – Invite via Edge Function so {{ .Data.organization_name }}
-          // is correctly written into raw_user_meta_data before the email is
-          // sent. signInWithOtp() ignores `data` for existing users.
+          // is correctly written into raw_user_meta_data before the email is sent.
           const { error: inviteError } = await supabase.functions.invoke("invite-org-admin", {
             body: {
               email: formData.admin_email,
@@ -166,7 +165,6 @@ export function TenantAdminPage() {
 
     } catch (error: any) {
       // ── Rollback: clean up org + member rows if a later step failed.
-      // Without this, retrying causes a 409 unique_grid_index conflict.
       if (newOrgId) {
         await supabase.from('members').delete().eq('org_id', newOrgId);
         await supabase.from('organizations').delete().eq('id', newOrgId);
@@ -184,13 +182,34 @@ export function TenantAdminPage() {
   const handleDelete = async () => {
     if (!formData.id || !confirm(`Are you sure you want to evict ${formData.name}?`)) return;
     try {
-      const { error } = await supabase.from('organizations').delete().eq('id', formData.id);
-      if (error) throw error;
-      toast.success("Tenant removed");
+      // Step 1: Decouple the organization from the Profiles table first!
+      // (We update it to null instead of deleting to prevent breaking Supabase Auth)
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({ organization_id: null })
+        .eq('organization_id', formData.id);
+      if (profileError) throw profileError;
+
+      // Step 2: Remove all associated members to clear the Members constraint
+      const { error: memberError } = await supabase
+        .from('members')
+        .delete()
+        .eq('org_id', formData.id);
+      if (memberError) throw memberError;
+
+      // Step 3: Now that the organization is completely isolated, delete it
+      const { error: orgError } = await supabase
+        .from('organizations')
+        .delete()
+        .eq('id', formData.id);
+      if (orgError) throw orgError;
+
+      toast.success("Tenant removed successfully");
       setIsDialogOpen(false);
       fetchOrganizations();
-    } catch (error) {
-      toast.error("Failed to remove tenant");
+    } catch (error: any) {
+      console.error("Error deleting tenant:", error);
+      toast.error(error.message || "Failed to remove tenant");
     }
   };
 
