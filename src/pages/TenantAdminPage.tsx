@@ -185,8 +185,20 @@ export function TenantAdminPage() {
   const handleDelete = async () => {
     if (!formData.id || !confirm(`Are you sure you want to evict ${formData.name}?`)) return;
     try {
-      // With Cascade Delete enabled in Supabase, deleting the org deletes the members/profiles automatically
-      const { error: orgError } = await supabase.from('organizations').delete().eq('id', formData.id);
+      // Step 1: Decouple the organization from the Profiles table first!
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({ organization_id: null })
+        .eq('organization_id', formData.id);
+      
+      if (profileError) throw profileError;
+
+      // Step 2: Now that the organization is isolated, delete it.
+      const { error: orgError } = await supabase
+        .from('organizations')
+        .delete()
+        .eq('id', formData.id);
+        
       if (orgError) throw orgError;
 
       toast.success("Tenant removed successfully");
@@ -375,17 +387,7 @@ export function TenantAdminPage() {
 
               <div className="space-y-1">
                 <Label className="text-slate-700 flex items-center gap-2"><DollarSign className="w-3 h-3 text-rose-700" /> Monthly Fee ($)</Label>
-                <Input 
-                  type="number" 
-                  step="0.01" 
-                  value={formData.monthly_fee ?? ''} 
-                  onChange={e => setFormData({
-                    ...formData, 
-                    monthly_fee: e.target.value === '' ? undefined : parseFloat(e.target.value)
-                  })} 
-                  className="bg-white text-slate-900 font-medium h-12 text-base" 
-                  placeholder="0.00" 
-                />
+                <Input type="number" step="0.01" value={formData.monthly_fee ?? ''} onChange={e => setFormData({...formData, monthly_fee: e.target.value === '' ? undefined : parseFloat(e.target.value)})} className="bg-white text-slate-900 font-medium h-12 text-base" placeholder="0.00" />
               </div>
 
               <div className="space-y-1 sm:col-span-2">
