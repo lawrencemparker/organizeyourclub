@@ -14,9 +14,6 @@ export function ForcePasswordSetup() {
   const [loading, setLoading] = useState(false);
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [major, setMajor] = useState("");
-  const [gpa, setGpa] = useState("");
 
   useEffect(() => {
     const checkFlow = async () => {
@@ -37,9 +34,6 @@ export function ForcePasswordSetup() {
     if (password.length < 8) return toast.error("Password must be at least 8 characters.");
     if (!fullName.trim()) return toast.error("Full Name is required");
     
-    const parsedGpa = gpa.trim() === "" ? null : parseFloat(gpa);
-    if (parsedGpa !== null && isNaN(parsedGpa)) return toast.error("Please enter a valid number for GPA");
-
     setLoading(true);
     try {
       const { data: memberRecord } = await supabase
@@ -74,14 +68,20 @@ export function ForcePasswordSetup() {
       if (authError && !authError.message.toLowerCase().includes("different from the old")) throw authError;
 
       if (memberRecord?.org_id && user?.id) {
+        // Removed phone update to prevent overwriting admin-submitted data
         const { error: profileError } = await supabase.from("profiles").upsert({
-          id: user.id, organization_id: memberRecord.org_id, full_name: fullName, phone: phone, role: memberRecord.role
+          id: user.id, 
+          organization_id: memberRecord.org_id, 
+          full_name: fullName, 
+          role: memberRecord.role
         });
         if (profileError) throw profileError;
       }
 
+      // Removed phone, major, and gpa updates to prevent overwriting admin-submitted data
       const { error: dbError } = await supabase.from("members").update({
-        status: "Active", full_name: fullName, phone: phone, major: major, gpa: parsedGpa,
+        status: "Active", 
+        full_name: fullName
       }).ilike("email", user?.email || "");
 
       if (dbError) throw dbError;
@@ -121,25 +121,10 @@ export function ForcePasswordSetup() {
             <Input type="text" placeholder="First and Last Name" value={fullName} onChange={(e) => setFullName(e.target.value)} className="bg-white/5 border-white/10 focus-visible:ring-[var(--primary)]" required />
           </div>
 
-          <div className="space-y-2 md:col-span-2">
+          <div className="space-y-2">
             <Label className="text-[10px] uppercase font-bold text-[var(--primary)]">New Password *</Label>
             <Input type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="bg-white/5 border-white/10 focus-visible:ring-[var(--primary)] tracking-widest" required />
             <p className="text-[10px] text-muted-foreground mt-1 leading-tight">Minimum 8 characters. Must include lowercase, uppercase, digits, and symbols.</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label className="text-[10px] uppercase font-bold text-muted-foreground">Phone Number</Label>
-              <Input type="tel" placeholder="(555) 123-4567" value={phone} onChange={(e) => setPhone(e.target.value)} className="bg-white/5 border-white/10 focus-visible:ring-[var(--primary)]" />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-[10px] uppercase font-bold text-muted-foreground">GPA</Label>
-              <Input type="text" placeholder="e.g. 3.8" value={gpa} onChange={(e) => setGpa(e.target.value)} className="bg-white/5 border-white/10 focus-visible:ring-[var(--primary)]" />
-            </div>
-            <div className="space-y-2 md:col-span-2">
-              <Label className="text-[10px] uppercase font-bold text-muted-foreground">Major / Field of Study</Label>
-              <Input type="text" placeholder="e.g. Computer Science" value={major} onChange={(e) => setMajor(e.target.value)} className="bg-white/5 border-white/10 focus-visible:ring-[var(--primary)]" />
-            </div>
           </div>
 
           <div className="pt-4 border-t border-white/10 mt-6">

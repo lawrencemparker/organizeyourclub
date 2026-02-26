@@ -48,13 +48,36 @@ export function MemberForm({ open, onOpenChange, onSuccess, member }: { open: bo
     setLoading(true);
 
     try {
+      const emailToSubmit = formData.email.trim();
+      
+      // Get the admin's organization_id early
+      const { data: profile } = await supabase.from('profiles').select('organization_id').eq('id', user?.id).single();
+      const currentOrgId = profile?.organization_id;
+
+      // --- MVP DUPLICATE CHECK ---
+      // Check if we are adding a new member OR changing an existing member's email
+      if (!member || member.email !== emailToSubmit) {
+        const { data: existingMember } = await supabase
+          .from('members')
+          .select('id')
+          .eq('org_id', currentOrgId)
+          .ilike('email', emailToSubmit) // Case-insensitive check
+          .maybeSingle();
+
+        if (existingMember) {
+          toast.error("This email is already registered within this organization.");
+          setLoading(false);
+          return; // Stop execution to prevent duplicate
+        }
+      }
+
       if (member) {
         // UPDATE EXISTING MEMBER
         const { error } = await supabase
           .from('members')
           .update({
             full_name: formData.full_name,
-            email: formData.email,
+            email: emailToSubmit,
             phone: formData.phone,
             role: formData.role,
             status: formData.status,
@@ -68,12 +91,10 @@ export function MemberForm({ open, onOpenChange, onSuccess, member }: { open: bo
 
       } else {
         // ADD NEW MEMBER
-        const { data: profile } = await supabase.from('profiles').select('organization_id').eq('id', user?.id).single();
-        
         const { error: insertError } = await supabase.from('members').insert([{
-          org_id: profile?.organization_id,
+          org_id: currentOrgId,
           full_name: formData.full_name,
-          email: formData.email,
+          email: emailToSubmit,
           phone: formData.phone,
           role: formData.role,
           status: formData.status,
@@ -83,11 +104,21 @@ export function MemberForm({ open, onOpenChange, onSuccess, member }: { open: bo
         
         if (insertError) throw insertError;
         
-        // Trigger the invite link for new creations
-        await supabase.auth.signInWithOtp({
-          email: formData.email,
-          options: { shouldCreateUser: false, emailRedirectTo: `${window.location.origin}/login` }
+        // MVP FIX 1: 1500ms transaction buffer so Postgres fully commits the row before the Edge Function checks for it
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        // MVP FIX 2: Use the exact same request-access Edge Function as the bulk invite, strictly checking for errors
+        const { error: invokeError } = await supabase.functions.invoke("request-access", {
+          body: {
+            email: emailToSubmit,
+            redirectTo: `${window.location.origin}/overview`
+          }
         });
+
+        if (invokeError) {
+          console.error(`Invite failed for ${emailToSubmit}:`, invokeError);
+          throw new Error("Member added to roster, but failed to send the invite email. Please try resending.");
+        }
 
         toast.success("Member added and invite sent!");
       }
@@ -135,7 +166,12 @@ export function MemberForm({ open, onOpenChange, onSuccess, member }: { open: bo
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label className="text-xs font-bold text-gray-400 uppercase">Role</Label>
-              <select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} className="flex h-10 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--primary)]">
+              <select 
+                value={formData.role} 
+                onChange={e => setFormData({...formData, role: e.target.value})} 
+                disabled={!member}
+                className={`flex h-10 w-full rounded-md border border-white/10 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--primary)] ${!member ? 'bg-black/40 opacity-60 cursor-not-allowed' : 'bg-white/5'}`}
+              >
                 <option value="Admin" className="bg-[#0B0F1A]">Admin</option>
                 <option value="President" className="bg-[#0B0F1A]">President</option>
                 <option value="Vice President" className="bg-[#0B0F1A]">Vice President</option>
@@ -146,7 +182,12 @@ export function MemberForm({ open, onOpenChange, onSuccess, member }: { open: bo
             </div>
             <div className="space-y-2">
               <Label className="text-xs font-bold text-gray-400 uppercase">Status</Label>
-              <select value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})} className="flex h-10 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--primary)]">
+              <select 
+                value={formData.status} 
+                onChange={e => setFormData({...formData, status: e.target.value})} 
+                disabled={!member}
+                className={`flex h-10 w-full rounded-md border border-white/10 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--primary)] ${!member ? 'bg-black/40 opacity-60 cursor-not-allowed' : 'bg-white/5'}`}
+              >
                 <option value="Pending" className="bg-[#0B0F1A]">Pending</option>
                 <option value="Active" className="bg-[#0B0F1A]">Active</option>
                 <option value="Inactive" className="bg-[#0B0F1A]">Inactive</option>
