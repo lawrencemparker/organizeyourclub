@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { Building2, Users, Home, Key, User, Trash2, Ban, Mail, Phone, DollarSign } from "lucide-react";
+import { Building2, Users, Home, Key, User, Trash2, Ban, Mail, Phone, DollarSign, LogOut } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,7 +43,7 @@ const generateSlug = (name: string) => {
 };
 
 export function TenantAdminPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
@@ -52,14 +52,19 @@ export function TenantAdminPage() {
   const [activeLocation, setActiveLocation] = useState<{index: number, building: string, floor: number, unit: number} | null>(null);
 
   useEffect(() => {
-    if (!user) return;
-    if (user.email !== SUPER_ADMIN_EMAIL) {
-      toast.error("Unauthorized Access");
+    if (authLoading) return; // Wait for Supabase to confirm auth state
+
+    if (!user) {
       navigate('/login');
       return;
     }
+    if (user.email !== SUPER_ADMIN_EMAIL) {
+      toast.error("Unauthorized Access");
+      navigate('/overview');
+      return;
+    }
     fetchOrganizations();
-  }, [user, navigate]);
+  }, [user, authLoading, navigate]);
 
   const fetchOrganizations = async () => {
     try {
@@ -71,6 +76,11 @@ export function TenantAdminPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/login');
   };
 
   const handleWindowClick = (unitIndex: number, bIndex: number, floorIndex: number) => {
@@ -106,14 +116,14 @@ export function TenantAdminPage() {
 
     try {
       if (formData.id) {
-        // ── UPDATE existing tenant ─────────────────────────────────────────
+        // UPDATE existing tenant
         const payload = { ...formData, ...locationData };
         const { error } = await supabase.from('organizations').update(payload).eq('id', formData.id);
         if (error) throw error;
         toast.success("Tenant updated successfully");
 
       } else {
-        // ── CREATE new tenant ──────────────────────────────────────────────
+        // CREATE new tenant
         const payload = {
           ...formData,
           ...locationData,
@@ -121,7 +131,6 @@ export function TenantAdminPage() {
           owner_id: user.id
         };
 
-        // Step 1 – Insert org
         const { data: newOrg, error: orgError } = await supabase
           .from('organizations')
           .insert([payload])
@@ -131,7 +140,6 @@ export function TenantAdminPage() {
         newOrgId = newOrg.id;
 
         if (newOrg && formData.admin_email) {
-          // Step 2 – Insert pending member row
           const { error: memberError } = await supabase.from('members').insert([{
             org_id: newOrg.id,
             full_name: formData.admin_name || "Organization Admin",
@@ -145,8 +153,6 @@ export function TenantAdminPage() {
             ? `${formData.name} - ${formData.chapter}`
             : formData.name;
 
-          // Step 3 – Invite via Edge Function so {{ .Data.organization_name }}
-          // is correctly written into raw_user_meta_data before the email is sent.
           const { error: inviteError } = await supabase.functions.invoke("invite-org-admin", {
             body: {
               email: formData.admin_email,
@@ -164,7 +170,6 @@ export function TenantAdminPage() {
       fetchOrganizations();
 
     } catch (error: any) {
-      // ── Rollback: clean up org + member rows if a later step failed.
       if (newOrgId) {
         await supabase.from('members').delete().eq('org_id', newOrgId);
         await supabase.from('organizations').delete().eq('id', newOrgId);
@@ -182,26 +187,7 @@ export function TenantAdminPage() {
   const handleDelete = async () => {
     if (!formData.id || !confirm(`Are you sure you want to evict ${formData.name}?`)) return;
     try {
-      // Step 1: Decouple the organization from the Profiles table first!
-      // (We update it to null instead of deleting to prevent breaking Supabase Auth)
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({ organization_id: null })
-        .eq('organization_id', formData.id);
-      if (profileError) throw profileError;
-
-      // Step 2: Remove all associated members to clear the Members constraint
-      const { error: memberError } = await supabase
-        .from('members')
-        .delete()
-        .eq('org_id', formData.id);
-      if (memberError) throw memberError;
-
-      // Step 3: Now that the organization is completely isolated, delete it
-      const { error: orgError } = await supabase
-        .from('organizations')
-        .delete()
-        .eq('id', formData.id);
+      const { error: orgError } = await supabase.from('organizations').delete().eq('id', formData.id);
       if (orgError) throw orgError;
 
       toast.success("Tenant removed successfully");
@@ -235,10 +221,27 @@ export function TenantAdminPage() {
   const vacantCount = TOTAL_UNITS - occupiedCount;
   const occupancyRate = Math.round((occupiedCount / TOTAL_UNITS) * 100);
 
-  if (loading) return null;
+  // Prevent blank screen flashing by showing a loading state
+  if (authLoading || loading) return (
+    <div className="min-h-screen bg-sky-50 flex items-center justify-center font-bold text-sky-800">
+      Loading Admin Center...
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-sky-200 to-sky-50 flex flex-col relative overflow-hidden font-sans">
+      
+      {/* SIGN OUT BUTTON */}
+      <div className="absolute top-6 right-6 z-50">
+        <Button 
+          onClick={handleSignOut} 
+          variant="outline" 
+          className="bg-white/80 hover:bg-white text-slate-800 font-bold border-white/50 shadow-sm rounded-full px-5"
+        >
+          <LogOut className="w-4 h-4 mr-2" /> Sign Out
+        </Button>
+      </div>
+
       <div className="absolute top-12 left-20 w-32 h-10 bg-white/60 rounded-full blur-xl" />
       <div className="absolute top-24 right-40 w-48 h-14 bg-white/50 rounded-full blur-xl" />
 

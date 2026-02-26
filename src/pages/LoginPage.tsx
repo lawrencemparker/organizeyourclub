@@ -34,7 +34,12 @@ export function LoginPage() {
 
   useEffect(() => {
     if (user && !showOrgPicker) {
-      navigate("/overview");
+      // Auto-route Super Admin to their portal if they hit this page while logged in
+      if (user.email === 'lawrencemparker@yahoo.com') {
+        navigate("/admin");
+      } else {
+        navigate("/overview");
+      }
     }
   }, [user, navigate, showOrgPicker]);
 
@@ -48,6 +53,13 @@ export function LoginPage() {
       if (authData.user) {
         setTempUserId(authData.user.id);
         
+        // --- SUPER ADMIN BYPASS ---
+        // Instantly route to the Admin Portal, skipping the org checks.
+        if (authData.user.email === 'lawrencemparker@yahoo.com') {
+          navigate("/admin");
+          return;
+        }
+
         // Fetch ALL memberships for this user
         const { data: memberData } = await supabase
           .from('members')
