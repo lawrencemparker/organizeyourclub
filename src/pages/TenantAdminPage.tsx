@@ -52,7 +52,7 @@ export function TenantAdminPage() {
   const [activeLocation, setActiveLocation] = useState<{index: number, building: string, floor: number, unit: number} | null>(null);
 
   useEffect(() => {
-    if (authLoading) return; // Wait for Supabase to confirm auth state
+    if (authLoading) return;
 
     if (!user) {
       navigate('/login');
@@ -116,14 +116,12 @@ export function TenantAdminPage() {
 
     try {
       if (formData.id) {
-        // UPDATE existing tenant
         const payload = { ...formData, ...locationData };
         const { error } = await supabase.from('organizations').update(payload).eq('id', formData.id);
         if (error) throw error;
         toast.success("Tenant updated successfully");
 
       } else {
-        // CREATE new tenant
         const payload = {
           ...formData,
           ...locationData,
@@ -187,6 +185,7 @@ export function TenantAdminPage() {
   const handleDelete = async () => {
     if (!formData.id || !confirm(`Are you sure you want to evict ${formData.name}?`)) return;
     try {
+      // With Cascade Delete enabled in Supabase, deleting the org deletes the members/profiles automatically
       const { error: orgError } = await supabase.from('organizations').delete().eq('id', formData.id);
       if (orgError) throw orgError;
 
@@ -221,7 +220,6 @@ export function TenantAdminPage() {
   const vacantCount = TOTAL_UNITS - occupiedCount;
   const occupancyRate = Math.round((occupiedCount / TOTAL_UNITS) * 100);
 
-  // Prevent blank screen flashing by showing a loading state
   if (authLoading || loading) return (
     <div className="min-h-screen bg-sky-50 flex items-center justify-center font-bold text-sky-800">
       Loading Admin Center...
@@ -276,67 +274,64 @@ export function TenantAdminPage() {
         </div>
       </div>
 
-      {/* Added overflow-x-auto for horizontal mobile swiping.
-  Added min-w-max to prevent buildings from being crushed. 
-*/}
-<div className="flex-1 flex items-end justify-start md:justify-center gap-6 pb-4 z-10 px-4 mt-8 overflow-x-auto w-full custom-scrollbar">
-  <div className="flex gap-6 min-w-max px-4">
-    {BUILDINGS.map((building, bIndex) => {
-       // ... existing building mapping code ...
-        {BUILDINGS.map((building, bIndex) => {
-          const startIndex = bIndex * UNITS_PER_BUILDING;
-          
-          return (
-            <div key={building.id} className="flex flex-col items-center">
-              <h3 className="text-slate-800 font-bold font-serif mb-2 tracking-wide">{building.name}</h3>
-              <div className={`${building.color} w-48 relative rounded-t-sm border-t-8 border-x-4 border-black/20 shadow-2xl`}>
-                <div className="absolute -top-3 left-[-10px] right-[-10px] h-3 bg-black/30 rounded-t-sm" />
-                <div className="p-4 flex flex-col gap-4">
-                  {[3, 2, 1, 0].map(floor => (
-                    <div key={floor} className="grid grid-cols-3 gap-3">
-                      {[0, 1, 2].map(windowCol => {
-                        if (floor === 0 && windowCol === 2) return null;
-                        
-                        const localIndex = floor === 0 ? windowCol : (floor - 1) * 3 + 2 + windowCol;
-                        const unitIndex = startIndex + localIndex;
-                        
-                        const org = organizations.find(o => o.grid_index === unitIndex);
-                        const isOccupied = !!org;
-                        const isSuspended = org?.is_suspended;
+      {/* MOBILE-FRIENDLY HORIZONTAL SCROLL WRAPPER */}
+      <div className="flex-1 flex items-end justify-start md:justify-center gap-6 pb-4 z-10 px-4 mt-8 overflow-x-auto w-full custom-scrollbar">
+        <div className="flex gap-6 min-w-max px-4">
+          {BUILDINGS.map((building, bIndex) => {
+            const startIndex = bIndex * UNITS_PER_BUILDING;
+            
+            return (
+              <div key={building.id} className="flex flex-col items-center">
+                <h3 className="text-slate-800 font-bold font-serif mb-2 tracking-wide">{building.name}</h3>
+                <div className={`${building.color} w-48 relative rounded-t-sm border-t-8 border-x-4 border-black/20 shadow-2xl`}>
+                  <div className="absolute -top-3 left-[-10px] right-[-10px] h-3 bg-black/30 rounded-t-sm" />
+                  <div className="p-4 flex flex-col gap-4">
+                    {[3, 2, 1, 0].map(floor => (
+                      <div key={floor} className="grid grid-cols-3 gap-3">
+                        {[0, 1, 2].map(windowCol => {
+                          if (floor === 0 && windowCol === 2) return null;
+                          
+                          const localIndex = floor === 0 ? windowCol : (floor - 1) * 3 + 2 + windowCol;
+                          const unitIndex = startIndex + localIndex;
+                          
+                          const org = organizations.find(o => o.grid_index === unitIndex);
+                          const isOccupied = !!org;
+                          const isSuspended = org?.is_suspended;
 
-                        return (
-                          <button
-                            key={windowCol}
-                            onClick={() => handleWindowClick(unitIndex, bIndex, floor)}
-                            className={`
-                              relative h-16 rounded-t-md border-b-4 flex flex-col items-center justify-center transition-all group overflow-hidden
-                              ${!isOccupied 
-                                ? "bg-slate-700/50 border-slate-900 hover:bg-slate-600/80" 
-                                : isSuspended 
-                                  ? "bg-red-950/90 border-red-900 hover:bg-red-900/90 shadow-none" 
-                                  : "bg-amber-200/90 border-amber-600 hover:bg-amber-100 shadow-[0_0_15px_rgba(251,191,36,0.5)]"}
-                            `}
-                          >
-                            <User className={`w-5 h-5 mb-1 ${!isOccupied ? "text-slate-400" : isSuspended ? "text-red-800" : "text-amber-800"}`} />
-                            <span className={`text-[9px] font-bold leading-none px-1 text-center truncate w-full ${!isOccupied ? "text-slate-400" : isSuspended ? "text-red-700" : "text-amber-900"}`}>
-                              {isOccupied ? org.name.substring(0, 8) : "Vacant"}
-                            </span>
-                          </button>
-                        );
-                      })}
-                      {floor === 0 && (
-                        <div className={`${building.accent} h-16 rounded-t-xl border-b-4 border-black/40 relative`}>
-                           <div className="absolute right-2 top-1/2 w-1.5 h-1.5 rounded-full bg-amber-400" />
-                           <div className="absolute bottom-1 w-full text-center text-[8px] font-bold text-black/40">{bIndex + 1}</div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                          return (
+                            <button
+                              key={windowCol}
+                              onClick={() => handleWindowClick(unitIndex, bIndex, floor)}
+                              className={`
+                                relative h-16 rounded-t-md border-b-4 flex flex-col items-center justify-center transition-all group overflow-hidden
+                                ${!isOccupied 
+                                  ? "bg-slate-700/50 border-slate-900 hover:bg-slate-600/80" 
+                                  : isSuspended 
+                                    ? "bg-red-950/90 border-red-900 hover:bg-red-900/90 shadow-none" 
+                                    : "bg-amber-200/90 border-amber-600 hover:bg-amber-100 shadow-[0_0_15px_rgba(251,191,36,0.5)]"}
+                              `}
+                            >
+                              <User className={`w-5 h-5 mb-1 ${!isOccupied ? "text-slate-400" : isSuspended ? "text-red-800" : "text-amber-800"}`} />
+                              <span className={`text-[9px] font-bold leading-none px-1 text-center truncate w-full ${!isOccupied ? "text-slate-400" : isSuspended ? "text-red-700" : "text-amber-900"}`}>
+                                {isOccupied ? org.name.substring(0, 8) : "Vacant"}
+                              </span>
+                            </button>
+                          );
+                        })}
+                        {floor === 0 && (
+                          <div className={`${building.accent} h-16 rounded-t-xl border-b-4 border-black/40 relative`}>
+                             <div className="absolute right-2 top-1/2 w-1.5 h-1.5 rounded-full bg-amber-400" />
+                             <div className="absolute bottom-1 w-full text-center text-[8px] font-bold text-black/40">{bIndex + 1}</div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
       <div className="h-12 bg-slate-400 border-t-8 border-slate-300 w-full z-10 shrink-0" />
@@ -347,7 +342,8 @@ export function TenantAdminPage() {
       </div>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[500px] bg-[#FAF9F6] border-slate-200">
+        {/* MOBILE OPTIMIZED DIALOG WIDTH */}
+        <DialogContent className="w-[95vw] sm:w-full sm:max-w-[500px] bg-[#FAF9F6] border-slate-200 rounded-2xl">
           <DialogHeader className="border-b pb-4 mb-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-rose-100 rounded-lg flex items-center justify-center text-rose-700">
@@ -366,15 +362,15 @@ export function TenantAdminPage() {
           </DialogHeader>
 
           <form onSubmit={handleSave} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1 col-span-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1 sm:col-span-2">
                 <Label className="text-slate-700 flex items-center gap-2"><Building2 className="w-3 h-3 text-rose-700" /> Organization Name</Label>
-                <Input value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} className="border-rose-200 focus-visible:ring-rose-500 bg-white text-slate-900 font-medium" placeholder="e.g. Acme Corp" required />
+                <Input value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} className="border-rose-200 focus-visible:ring-rose-500 bg-white text-slate-900 font-medium h-12 text-base" placeholder="e.g. Acme Corp" required />
               </div>
               
               <div className="space-y-1">
                 <Label className="text-slate-700 flex items-center gap-2"><span className="text-rose-700 font-bold">#</span> Chapter</Label>
-                <Input value={formData.chapter || ''} onChange={e => setFormData({...formData, chapter: e.target.value})} className="bg-white text-slate-900 font-medium" placeholder="e.g. Northeast Region" />
+                <Input value={formData.chapter || ''} onChange={e => setFormData({...formData, chapter: e.target.value})} className="bg-white text-slate-900 font-medium h-12 text-base" placeholder="e.g. Northeast Region" />
               </div>
 
               <div className="space-y-1">
@@ -387,40 +383,40 @@ export function TenantAdminPage() {
                     ...formData, 
                     monthly_fee: e.target.value === '' ? undefined : parseFloat(e.target.value)
                   })} 
-                  className="bg-white text-slate-900 font-medium" 
+                  className="bg-white text-slate-900 font-medium h-12 text-base" 
                   placeholder="0.00" 
                 />
               </div>
 
-              <div className="space-y-1 col-span-2">
+              <div className="space-y-1 sm:col-span-2">
                 <Label className="text-slate-700 flex items-center gap-2"><User className="w-3 h-3 text-rose-700" /> Organization Admin</Label>
-                <Input value={formData.admin_name || ''} onChange={e => setFormData({...formData, admin_name: e.target.value})} className="bg-white text-slate-900 font-medium" placeholder="e.g. Jane Smith" />
+                <Input value={formData.admin_name || ''} onChange={e => setFormData({...formData, admin_name: e.target.value})} className="bg-white text-slate-900 font-medium h-12 text-base" placeholder="e.g. Jane Smith" />
               </div>
 
               <div className="space-y-1">
                 <Label className="text-slate-700 flex items-center gap-2"><Mail className="w-3 h-3 text-rose-700" /> Email Address</Label>
-                <Input type="email" value={formData.admin_email || ''} onChange={e => setFormData({...formData, admin_email: e.target.value})} className="bg-white text-slate-900 font-medium" placeholder="admin@example.com" />
+                <Input type="email" value={formData.admin_email || ''} onChange={e => setFormData({...formData, admin_email: e.target.value})} className="bg-white text-slate-900 font-medium h-12 text-base" placeholder="admin@example.com" />
               </div>
 
               <div className="space-y-1">
                 <Label className="text-slate-700 flex items-center gap-2"><Phone className="w-3 h-3 text-rose-700" /> Phone Number</Label>
-                <Input value={formData.phone || ''} onChange={e => setFormData({...formData, phone: e.target.value})} className="bg-white text-slate-900 font-medium" placeholder="(555) 123-4567" />
+                <Input value={formData.phone || ''} onChange={e => setFormData({...formData, phone: e.target.value})} className="bg-white text-slate-900 font-medium h-12 text-base" placeholder="(555) 123-4567" />
               </div>
             </div>
 
             <div className="pt-4 flex flex-col sm:flex-row justify-between items-center gap-3 border-t">
               {formData.id ? (
                 <div className="flex gap-2 w-full sm:w-auto">
-                  <Button type="button" onClick={handleDelete} className="bg-red-600 hover:bg-red-700 text-white font-bold px-3"><Trash2 className="w-4 h-4"/></Button>
-                  <Button type="button" onClick={handleSuspendToggle} className={`${formData.is_suspended ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-orange-600 hover:bg-orange-700'} text-white font-bold flex-1`}>
+                  <Button type="button" onClick={handleDelete} className="bg-red-600 hover:bg-red-700 text-white font-bold px-3 h-12"><Trash2 className="w-4 h-4"/></Button>
+                  <Button type="button" onClick={handleSuspendToggle} className={`${formData.is_suspended ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-orange-600 hover:bg-orange-700'} text-white font-bold flex-1 h-12`}>
                     <Ban className="w-4 h-4 mr-2"/> {formData.is_suspended ? "Unsuspend Tenant" : "Suspend Tenant"}
                   </Button>
                 </div>
               ) : <div className="hidden sm:block" />}
               
               <div className="flex gap-2 w-full sm:w-auto mt-2 sm:mt-0">
-                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} className="text-slate-600 flex-1">Cancel</Button>
-                <Button type="submit" className="bg-[#802B2B] hover:bg-[#601A1A] text-white font-bold flex-1">
+                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} className="text-slate-600 flex-1 h-12">Cancel</Button>
+                <Button type="submit" className="bg-[#802B2B] hover:bg-[#601A1A] text-white font-bold flex-1 h-12">
                   {formData.id ? "Update Tenant" : "Add Tenant"}
                 </Button>
               </div>
