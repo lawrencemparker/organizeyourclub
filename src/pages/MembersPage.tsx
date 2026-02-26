@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Search, Loader2, MoreVertical, Edit2, Trash2, Mail, Plus, Send } from "lucide-react";
+import { Search, Loader2, MoreVertical, Edit2, Trash2, Mail, Plus, Send, Users } from "lucide-react";
 import { toast } from "sonner";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -26,9 +26,17 @@ export function MembersPage() {
   const [canEdit, setCanEdit] = useState(false);
   const [canDelete, setCanDelete] = useState(false);
 
+  // Single Invite State
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<any>(null);
 
+  // Bulk Invite State
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [bulkEmails, setBulkEmails] = useState("");
+  const [isBulkInviting, setIsBulkInviting] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0, failed: 0 });
+
+  // Email State
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
   const [emailSubject, setEmailSubject] = useState("");
@@ -141,6 +149,111 @@ export function MembersPage() {
     }
   };
 
+  const handleBulkInvite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bulkEmails.trim()) return;
+
+    setIsBulkInviting(true);
+    setBulkProgress({ current: 0, total: 0, failed: 0 });
+
+    try {
+      const extractedEmails = bulkEmails
+        .split(/[\n,]+/)
+        .map(email => email.trim().toLowerCase())
+        .filter(email => email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/));
+
+      if (extractedEmails.length === 0) {
+        toast.error("No valid email addresses found.");
+        setIsBulkInviting(false);
+        return;
+      }
+
+      setBulkProgress({ current: 0, total: extractedEmails.length, failed: 0 });
+
+      let successCount = 0;
+      let skippedCount  = 0;
+      let failedCount   = 0;
+
+      for (let i = 0; i < extractedEmails.length; i++) {
+        const email = extractedEmails[i];
+        setBulkProgress({ current: i + 1, total: extractedEmails.length, failed: failedCount });
+
+        // Check if this email already exists in the members table
+        const { data: existing } = await supabase
+          .from('members')
+          .select('id, status')
+          .eq('org_id', orgId)
+          .eq('email', email)
+          .maybeSingle();
+
+        // Only skip if they are already an ACTIVE member — 
+        // Pending means they never got (or never clicked) the invite, so re-send it.
+        if (existing && existing.status?.toLowerCase() === 'active') {
+          skippedCount++;
+          continue;
+        }
+
+        // Insert only if they are not in the table at all
+        if (!existing) {
+          const { error: insertError } = await supabase
+            .from('members')
+            .insert([{
+              org_id: orgId,
+              email: email,
+              full_name: email.split('@')[0],
+              role: 'member',
+              status: 'Pending'
+            }]);
+
+          if (insertError) {
+            console.error(`Failed to insert ${email}:`, insertError);
+            failedCount++;
+            setBulkProgress(prev => ({ ...prev, failed: failedCount }));
+            continue;
+          }
+        }
+
+        // Throttle BEFORE every send so the edge function is never hit cold
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        const { error: invokeError } = await supabase.functions.invoke("request-access", {
+          body: {
+            email: email,
+            redirectTo: `${window.location.origin}/overview`
+          }
+        });
+
+        if (invokeError) {
+          console.error(`Invite failed for ${email}:`, invokeError);
+          failedCount++;
+          setBulkProgress(prev => ({ ...prev, failed: failedCount }));
+          toast.error(`Failed to send invite to ${email}`);
+        } else {
+          successCount++;
+        }
+      }
+
+      const summaryParts = [`Sent ${successCount} invite${successCount !== 1 ? 's' : ''}.`];
+      if (skippedCount > 0) summaryParts.push(`${skippedCount} already active.`);
+      if (failedCount > 0) summaryParts.push(`${failedCount} failed — check console.`);
+
+      failedCount > 0
+        ? toast.warning(summaryParts.join(' '))
+        : toast.success(summaryParts.join(' '));
+
+      setIsBulkModalOpen(false);
+      setBulkEmails("");
+      setBulkProgress({ current: 0, total: 0, failed: 0 });
+      fetchMembers();
+
+    } catch (error: any) {
+      console.error("Bulk invite error:", error);
+      toast.error(error.message || "Failed to process bulk invites.");
+    } finally {
+      setIsBulkInviting(false);
+    }
+  };
+
   const filteredMembers = members.filter(m => 
     m.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     m.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -160,14 +273,25 @@ export function MembersPage() {
                 className="bg-white/5 border-white/10 text-white hover:bg-white/10"
               >
                 <Mail className="w-4 h-4 mr-2" />
-                Email ({selectedMembers.length})
+                <span className="hidden sm:inline">Email ({selectedMembers.length})</span>
+                <span className="sm:hidden">({selectedMembers.length})</span>
               </Button>
             )}
             {canCreate && (
-              <Button onClick={handleAddMember} className="bg-[var(--primary)] text-white hover:opacity-90">
-                <Plus className="w-4 h-4 mr-2" />
-                Add Member
-              </Button>
+              <>
+                <Button 
+                  onClick={() => setIsBulkModalOpen(true)} 
+                  variant="outline" 
+                  className="border-white/10 text-white hover:bg-white/10 bg-white/5"
+                >
+                  <Users className="w-4 h-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Bulk Invite</span>
+                </Button>
+                <Button onClick={handleAddMember} className="bg-[var(--primary)] text-white hover:opacity-90">
+                  <Plus className="w-4 h-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Add Member</span>
+                </Button>
+              </>
             )}
           </div>
         }
@@ -184,14 +308,14 @@ export function MembersPage() {
           />
         </div>
 
-        <div className="rounded-xl border border-white/10 bg-white/5 overflow-hidden">
-          <table className="w-full text-left border-collapse">
+        <div className="rounded-xl border border-white/10 bg-white/5 overflow-x-auto custom-scrollbar">
+          <table className="w-full text-left border-collapse min-w-[600px]">
             <thead>
               <tr className="border-b border-white/10 bg-white/5">
                 <th className="p-4 w-10">
                   <input 
                     type="checkbox" 
-                    className="rounded border-white/10 bg-white/5"
+                    className="rounded border-white/10 bg-white/5 accent-[var(--primary)]"
                     checked={selectedMembers.length === filteredMembers.length && filteredMembers.length > 0}
                     onChange={(e) => {
                       if (e.target.checked) {
@@ -228,7 +352,7 @@ export function MembersPage() {
                     <td className="p-4">
                       <input 
                         type="checkbox" 
-                        className="rounded border-white/10 bg-white/5"
+                        className="rounded border-white/10 bg-white/5 accent-[var(--primary)]"
                         checked={selectedMembers.includes(member.id)}
                         onChange={(e) => {
                           if (e.target.checked) {
@@ -244,7 +368,7 @@ export function MembersPage() {
                       <div className="text-sm text-muted-foreground">{member.email}</div>
                     </td>
                     <td className="p-4">
-                      <Badge variant="secondary" className="bg-white/5 text-white border-white/10">
+                      <Badge variant="secondary" className="bg-white/5 text-white border-white/10 capitalize">
                         {member.role}
                       </Badge>
                     </td>
@@ -288,8 +412,82 @@ export function MembersPage() {
         </div>
       </div>
 
+      <Dialog open={isBulkModalOpen} onOpenChange={setIsBulkModalOpen}>
+        <DialogContent className="bg-[#1A1F2E] border-white/10 text-white w-[95vw] sm:w-full sm:max-w-[500px] rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>Bulk Invite Members</DialogTitle>
+            <DialogDescription className="text-muted-foreground">
+              Paste a list of email addresses separated by commas or new lines.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleBulkInvite} className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Email Addresses</Label>
+              <textarea 
+                value={bulkEmails} 
+                onChange={(e) => setBulkEmails(e.target.value)}
+                placeholder={`john@example.com\njane@university.edu\nmike@company.com`}
+                rows={6}
+                disabled={isBulkInviting}
+                className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] resize-none custom-scrollbar disabled:opacity-50"
+                required
+              />
+            </div>
+
+            {isBulkInviting && bulkProgress.total > 0 && (
+              <div className="space-y-1.5">
+                <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
+                  <div
+                    className="h-1.5 rounded-full transition-all duration-500"
+                    style={{
+                      width: `${(bulkProgress.current / bulkProgress.total) * 100}%`,
+                      backgroundColor: bulkProgress.failed > 0 ? '#f59e0b' : 'var(--primary)'
+                    }}
+                  />
+                </div>
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>{bulkProgress.current} of {bulkProgress.total} processed</span>
+                  {bulkProgress.failed > 0 && (
+                    <span className="text-amber-400">{bulkProgress.failed} failed</span>
+                  )}
+                </div>
+              </div>
+            )}
+            <div className="pt-4 flex justify-end gap-3 border-t border-white/10">
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => setIsBulkModalOpen(false)}
+                className="border-white/10 text-muted-foreground hover:text-white"
+              >
+                Cancel
+              </Button>
+              <Button 
+                type="submit" 
+                disabled={isBulkInviting}
+                className="bg-[var(--primary)] text-white hover:opacity-90 min-w-[140px]"
+              >
+                {isBulkInviting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    {bulkProgress.total > 0
+                      ? `Sending ${bulkProgress.current} / ${bulkProgress.total}`
+                      : "Preparing..."}
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4 mr-2" />
+                    Send Invites
+                  </>
+                )}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={isEmailModalOpen} onOpenChange={setIsEmailModalOpen}>
-        <DialogContent className="bg-[#1A1F2E] border-white/10 text-white sm:max-w-[600px]">
+        <DialogContent className="bg-[#1A1F2E] border-white/10 text-white w-[95vw] sm:w-full sm:max-w-[600px] rounded-2xl">
           <DialogHeader>
             <DialogTitle>Send Bulk Email</DialogTitle>
             <DialogDescription className="text-muted-foreground">
@@ -314,7 +512,7 @@ export function MembersPage() {
                 onChange={(e) => setEmailMessage(e.target.value)}
                 placeholder="Type your message here..."
                 rows={6}
-                className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] resize-none"
+                className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] resize-none custom-scrollbar"
                 required
               />
             </div>
