@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Loader2, HelpCircle, Send, CheckCircle2, Building2, ChevronRight } from "lucide-react";
+import { Loader2, HelpCircle, Send, CheckCircle2, ChevronRight } from "lucide-react";
 import {
   Dialog,
   DialogContent,
