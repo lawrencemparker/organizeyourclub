@@ -18,14 +18,10 @@ import {
 } from "@/components/ui/dialog";
 
 export function LandingPage() {
-  // Modal State - Form signup
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Lightbox State - Image preview
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
-  // Form State
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -44,7 +40,6 @@ export function LandingPage() {
     setIsSubmitting(true);
 
     try {
-      // Real Web3Forms Integration
       const response = await fetch("https://api.web3forms.com/submit", {
         method: "POST",
         headers: {
@@ -64,13 +59,11 @@ export function LandingPage() {
       if (result.success) {
         toast.success("Message sent! We will be in touch shortly.");
         setIsModalOpen(false);
-        // Clear the form
         setFormData({ name: "", email: "", phone: "", source: "", message: "" });
       } else {
         throw new Error(result.message || "Something went wrong.");
       }
     } catch (error) {
-      console.error("Web3Forms Error:", error);
       toast.error("Failed to send message. Please try again.");
     } finally {
       setIsSubmitting(false);
@@ -89,7 +82,7 @@ export function LandingPage() {
   return (
     <div className="min-h-screen bg-[#0B0F1A] text-white selection:bg-[var(--primary)] selection:text-white overflow-hidden">
       
-      {/* NAVIGATION */}
+      {/* NAVIGATION - "OC" Badge Removed */}
       <nav className="fixed top-0 w-full z-40 border-b border-white/5 bg-[#0B0F1A]/80 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -106,7 +99,7 @@ export function LandingPage() {
         </div>
       </nav>
 
-      {/* HERO SECTION */}
+      {/* HERO SECTION - "View Live Demo" Removed */}
       <section className="relative pt-32 pb-20 md:pt-48 md:pb-32 px-6">
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[400px] bg-[var(--primary)]/20 blur-[120px] rounded-full pointer-events-none" />
         
@@ -138,22 +131,18 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* DASHBOARD PREVIEW WITH REAL SCREENSHOT */}
+      {/* DASHBOARD PREVIEW - Using .png extension */}
       <section className="px-6 pb-24 relative z-20">
         <div className="max-w-6xl mx-auto">
-          {/* Clickable wrapper button for the main dashboard image */}
           <button 
             onClick={() => setSelectedImage("/screenshots/Overview.png")} 
             className="w-full text-left glass-card rounded-2xl border border-white/10 p-2 shadow-2xl bg-gradient-to-b from-white/5 to-transparent relative overflow-hidden group cursor-zoom-in"
           >
-             {/* Hover hint logic for the hero image */}
              <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                 <Button variant="secondary" className="bg-white text-black hover:bg-gray-200 rounded-full font-bold shadow-2xl transition-transform transform scale-95 group-hover:scale-100 pointer-events-none">
                    <ZoomIn className="w-4 h-4 mr-2" /> View Full Screenshot
                 </Button>
              </div>
-             
-             {/* THE REAL OVERVIEW SCREENSHOT */}
              <img 
                src="/screenshots/Overview.png" 
                alt="Organize Your Club Dashboard Overview" 
@@ -163,7 +152,7 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* FEATURES GRID WITH IMAGES */}
+      {/* FEATURES GRID - Using .png extensions */}
       <section className="py-24 px-6 relative border-t border-white/5 bg-white/[0.02]">
         <div className="max-w-7xl mx-auto">
           <div className="text-center max-w-2xl mx-auto mb-16">
@@ -183,14 +172,11 @@ export function LandingPage() {
                     <h3 className="text-xl font-bold mb-3">{feature.title}</h3>
                     <p className="text-muted-foreground text-sm leading-relaxed mb-6">{feature.description}</p>
                   </div>
-                  
-                  {/* FEATURE SCREENSHOT INSERT - Made Clickable for Lightbox */}
                   <button 
                     onClick={() => setSelectedImage(feature.image)} 
                     className="w-full mt-auto relative rounded-xl overflow-hidden border border-white/10 shadow-lg group-hover:shadow-[var(--primary)]/20 transition-all cursor-zoom-in"
                   >
                     <div className="absolute inset-0 bg-gradient-to-t from-[#0B0F1A] via-transparent to-transparent z-10 opacity-80" />
-                    {/* Hover hint icon on thumbnails */}
                     <div className="absolute inset-0 z-20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                       <div className="bg-white/10 backdrop-blur-sm p-3 rounded-full border border-white/20">
                         <ZoomIn className="w-6 h-6 text-white" />
@@ -274,15 +260,12 @@ export function LandingPage() {
         <p>© {new Date().getFullYear()} Organize Your Club. All rights reserved.</p>
       </footer>
 
-      {/* --- LEAD CAPTURE MODAL --- */}
+      {/* LEAD CAPTURE MODAL */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="sm:max-w-[700px] bg-[#0B0F1A] border-white/10 text-white p-0 overflow-hidden">
-          
-          {/* Subtle accent header matching the app theme */}
+        <DialogContent className="sm:max-w-[700px] bg-[#0B0F1A] border-white/10 text-white p-0 overflow-hidden shadow-2xl">
           <div className="h-2 w-full bg-[var(--primary)] relative">
             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent opacity-50" />
           </div>
-
           <div className="p-6 sm:p-8">
             <DialogHeader className="mb-6 text-left">
               <DialogTitle className="text-2xl font-black">Get Started Today</DialogTitle>
@@ -290,10 +273,7 @@ export function LandingPage() {
                 Want to learn more about how we can streamline your chapter's operations? Fill out the details below to request more information or a personalized demo.
               </DialogDescription>
             </DialogHeader>
-
             <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              
-              {/* Left Column */}
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Name <span className="text-[var(--primary)]">*</span></Label>
@@ -303,7 +283,6 @@ export function LandingPage() {
                     className="bg-white/5 border-white/10 text-white focus-visible:ring-[var(--primary)]"
                   />
                 </div>
-                
                 <div className="space-y-2">
                   <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Email Address <span className="text-[var(--primary)]">*</span></Label>
                   <Input 
@@ -312,7 +291,6 @@ export function LandingPage() {
                     className="bg-white/5 border-white/10 text-white focus-visible:ring-[var(--primary)]"
                   />
                 </div>
-
                 <div className="space-y-2">
                   <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Phone Number</Label>
                   <Input 
@@ -321,7 +299,6 @@ export function LandingPage() {
                     className="bg-white/5 border-white/10 text-white focus-visible:ring-[var(--primary)]"
                   />
                 </div>
-
                 <div className="space-y-2">
                   <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">How did you find us?</Label>
                   <Input 
@@ -331,8 +308,6 @@ export function LandingPage() {
                   />
                 </div>
               </div>
-
-              {/* Right Column */}
               <div className="flex flex-col">
                 <div className="space-y-2 flex-1 flex flex-col">
                   <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Message</Label>
@@ -343,8 +318,6 @@ export function LandingPage() {
                   />
                 </div>
               </div>
-
-              {/* Submit Button spanning both columns on mobile, right aligned on desktop */}
               <div className="md:col-span-2 pt-4 flex justify-end border-t border-white/5 mt-2">
                 <Button 
                   type="button" variant="ghost" onClick={() => setIsModalOpen(false)} 
@@ -357,21 +330,17 @@ export function LandingPage() {
                   {isSubmitting ? "Sending..." : "Submit Inquiry"}
                 </Button>
               </div>
-
             </form>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* --- IMAGE LIGHTBOX --- */}
+      {/* IMAGE LIGHTBOX */}
       <Dialog open={!!selectedImage} onOpenChange={() => setSelectedImage(null)}>
-        {/* Customized Content container for the lightbox - wide max width, minimal padding */}
         <DialogContent className="max-w-[95vw] md:max-w-7xl h-auto bg-[#0B0F1A] border-white/10 text-white p-4 overflow-hidden shadow-2xl">
-          <DialogHeader className="sr-only"> {/* Hidden title for accessibility */}
+          <DialogHeader className="sr-only">
             <DialogTitle>Image Preview</DialogTitle>
           </DialogHeader>
-
-          {/* Container to center and scale image within viewport constraints */}
           <div className="flex items-center justify-center p-2 relative cursor-zoom-out" onClick={() => setSelectedImage(null)}>
              <img 
                 src={selectedImage || ""} 
