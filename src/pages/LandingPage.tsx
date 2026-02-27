@@ -93,9 +93,6 @@ export function LandingPage() {
       <nav className="fixed top-0 w-full z-40 border-b border-white/5 bg-[#0B0F1A]/80 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-[var(--primary)] flex items-center justify-center font-black text-white">
-              OC
-            </div>
             <span className="font-bold text-lg tracking-tight">Organize Your Club</span>
           </div>
           <div className="flex items-center gap-4">
