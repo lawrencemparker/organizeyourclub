@@ -44,13 +44,33 @@ export function LandingPage() {
     setIsSubmitting(true);
 
     try {
-      // Simulating a network request for the UI
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Real Web3Forms Integration
+      const response = await fetch("https://api.web3forms.com/submit", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          access_key: "2c56aac9-4872-4c9f-b033-ee5d99eb8ca8",
+          subject: "New Inquiry from Organize Your Club",
+          from_name: "Organize Your Club Landing Page",
+          ...formData
+        }),
+      });
 
-      toast.success("Message sent! We will be in touch shortly.");
-      setIsModalOpen(false);
-      setFormData({ name: "", email: "", phone: "", source: "", message: "" });
+      const result = await response.json();
+
+      if (result.success) {
+        toast.success("Message sent! We will be in touch shortly.");
+        setIsModalOpen(false);
+        // Clear the form
+        setFormData({ name: "", email: "", phone: "", source: "", message: "" });
+      } else {
+        throw new Error(result.message || "Something went wrong.");
+      }
     } catch (error) {
+      console.error("Web3Forms Error:", error);
       toast.error("Failed to send message. Please try again.");
     } finally {
       setIsSubmitting(false);
@@ -222,7 +242,7 @@ export function LandingPage() {
             <div className="glass-card p-6 rounded-2xl border border-white/10 shadow-2xl relative">
               <div className="space-y-4">
                 <div className="flex items-center justify-between border-b border-white/5 pb-4">
-                  <div><p className="font-bold text-sm">Lorenzo Maurice</p><p className="text-xs text-muted-foreground">Member</p></div>
+                  <div><p className="font-bold text-sm">Boomer Parker</p><p className="text-xs text-muted-foreground">Member</p></div>
                   <div className="px-2 py-1 rounded bg-[var(--primary)]/20 text-[var(--primary)] text-xs font-bold border border-[var(--primary)]/30">Permissions Saved</div>
                 </div>
                 {[
@@ -285,7 +305,7 @@ export function LandingPage() {
                   <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Name <span className="text-[var(--primary)]">*</span></Label>
                   <Input 
                     name="name" value={formData.name} onChange={handleInputChange} required
-                    placeholder="Keith Cole" 
+                    placeholder="Jane Doe" 
                     className="bg-white/5 border-white/10 text-white focus-visible:ring-[var(--primary)]"
                   />
                 </div>
@@ -294,7 +314,7 @@ export function LandingPage() {
                   <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Email Address <span className="text-[var(--primary)]">*</span></Label>
                   <Input 
                     name="email" type="email" value={formData.email} onChange={handleInputChange} required
-                    placeholder="keith@university.edu" 
+                    placeholder="jane@university.edu" 
                     className="bg-white/5 border-white/10 text-white focus-visible:ring-[var(--primary)]"
                   />
                 </div>
