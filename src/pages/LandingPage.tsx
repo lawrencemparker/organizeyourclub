@@ -137,9 +137,6 @@ export function LandingPage() {
             <Button onClick={() => setIsModalOpen(true)} size="lg" className="h-14 px-8 text-base bg-[var(--primary)] text-white hover:opacity-90 rounded-full shadow-[0_0_40px_rgba(var(--primary-rgb),0.3)] w-full sm:w-auto">
               Start Organizing Free <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
-            <Button asChild size="lg" variant="outline" className="h-14 px-8 text-base border-white/10 hover:bg-white/5 text-white rounded-full w-full sm:w-auto">
-              <Link to="/login">View Live Demo</Link>
-            </Button>
           </div>
         </div>
       </section>
