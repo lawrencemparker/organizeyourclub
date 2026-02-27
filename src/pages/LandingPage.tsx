@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { 
   ShieldCheck, Users, Calendar, Wallet, FileText, 
-  Mail, ArrowRight, LayoutDashboard, CheckCircle2, Cloud, Loader2
+  Mail, ArrowRight, CheckCircle2, Cloud, Loader2, ZoomIn
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,9 +18,12 @@ import {
 } from "@/components/ui/dialog";
 
 export function LandingPage() {
-  // Modal State
+  // Modal State - Form signup
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Lightbox State - Image preview
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -41,14 +44,6 @@ export function LandingPage() {
     setIsSubmitting(true);
 
     try {
-      // TODO: Connect to Formspree or Web3Forms
-      // Example: 
-      // await fetch("https://formspree.io/f/YOUR_ENDPOINT", {
-      //   method: "POST",
-      //   headers: { "Content-Type": "application/json" },
-      //   body: JSON.stringify(formData)
-      // });
-
       // Simulating a network request for the UI
       await new Promise(resolve => setTimeout(resolve, 1500));
 
@@ -63,12 +58,12 @@ export function LandingPage() {
   };
 
   const features = [
-    { title: "Member Roster & Roles", description: "Manage your entire organization in one place. Assign custom roles, track active statuses, and maintain a centralized directory.", icon: Users, color: "text-blue-400", bg: "bg-blue-400/10" },
-    { title: "Dynamic Event Board", description: "Schedule meetings, socials, and workshops with beautiful color-coded cards. Automatically filters past and future events.", icon: Calendar, color: "text-emerald-400", bg: "bg-emerald-400/10" },
-    { title: "Treasury & Finances", description: "Keep a transparent ledger of all income and expenses. Track current balances, categorize transactions, and export to CSV.", icon: Wallet, color: "text-amber-400", bg: "bg-amber-400/10" },
-    { title: "Cloud Document Hub", description: "A secure, centralized repository for chapter files. Seamlessly integrates with Google Drive to attach living documents.", icon: Cloud, color: "text-indigo-400", bg: "bg-indigo-400/10" },
-    { title: "Requirement Compliance", description: "Never miss a deadline. Track university and national chapter compliance tasks with visual progress bars and overdue alerts.", icon: FileText, color: "text-rose-400", bg: "bg-rose-400/10" },
-    { title: "Bulk Communications", description: "Send professional, branded emails directly to your members. Features a complete audit trail and history log of all outgoing messages.", icon: Mail, color: "text-teal-400", bg: "bg-teal-400/10" }
+    { title: "Member Roster & Roles", description: "Manage your entire organization in one place. Assign custom roles, track active statuses, and maintain a centralized directory.", icon: Users, color: "text-blue-400", bg: "bg-blue-400/10", image: "/screenshots/Members.png" },
+    { title: "Dynamic Event Board", description: "Schedule meetings, socials, and workshops with beautiful color-coded cards. Automatically filters past and future events.", icon: Calendar, color: "text-emerald-400", bg: "bg-emerald-400/10", image: "/screenshots/Events.png" },
+    { title: "Treasury & Finances", description: "Keep a transparent ledger of all income and expenses. Track current balances, categorize transactions, and export to CSV.", icon: Wallet, color: "text-amber-400", bg: "bg-amber-400/10", image: "/screenshots/Finances.png" },
+    { title: "Cloud Document Hub", description: "A secure, centralized repository for chapter files. Seamlessly integrates with Google Drive to attach living documents.", icon: Cloud, color: "text-indigo-400", bg: "bg-indigo-400/10", image: "/screenshots/Documents.png" },
+    { title: "Requirement Compliance", description: "Never miss a deadline. Track university and national chapter compliance tasks with visual progress bars and overdue alerts.", icon: FileText, color: "text-rose-400", bg: "bg-rose-400/10", image: "/screenshots/Compliance.png" },
+    { title: "Bulk Communications", description: "Send professional, branded emails directly to your members. Features a complete audit trail and history log of all outgoing messages.", icon: Mail, color: "text-teal-400", bg: "bg-teal-400/10", image: "/screenshots/History.png" }
   ];
 
   return (
@@ -129,33 +124,32 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* DASHBOARD PREVIEW */}
-      <section className="px-6 pb-24">
+      {/* DASHBOARD PREVIEW WITH REAL SCREENSHOT */}
+      <section className="px-6 pb-24 relative z-20">
         <div className="max-w-6xl mx-auto">
-          <div className="glass-card rounded-2xl border border-white/10 p-2 shadow-2xl bg-gradient-to-b from-white/5 to-transparent relative overflow-hidden">
-             <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-10 flex items-center justify-center">
-                <Button variant="secondary" className="bg-white text-black hover:bg-gray-200 rounded-full font-bold shadow-2xl" onClick={() => setIsModalOpen(true)}>
-                   <LayoutDashboard className="w-4 h-4 mr-2" /> Explore the Dashboard
+          {/* Clickable wrapper button for the main dashboard image */}
+          <button 
+            onClick={() => setSelectedImage("/screenshots/Overview.png")} 
+            className="w-full text-left glass-card rounded-2xl border border-white/10 p-2 shadow-2xl bg-gradient-to-b from-white/5 to-transparent relative overflow-hidden group cursor-zoom-in"
+          >
+             {/* Hover hint logic for the hero image */}
+             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                <Button variant="secondary" className="bg-white text-black hover:bg-gray-200 rounded-full font-bold shadow-2xl transition-transform transform scale-95 group-hover:scale-100 pointer-events-none">
+                   <ZoomIn className="w-4 h-4 mr-2" /> View Full Screenshot
                 </Button>
              </div>
-             <div className="h-[400px] w-full rounded-xl bg-[#0B0F1A] border border-white/5 p-6 flex gap-6">
-                <div className="w-48 hidden md:flex flex-col gap-3">
-                   <div className="h-4 w-24 bg-white/10 rounded mb-4" />
-                   {[1,2,3,4,5].map(i => <div key={i} className="h-8 w-full bg-white/5 rounded" />)}
-                </div>
-                <div className="flex-1 flex flex-col gap-6">
-                   <div className="h-12 w-full bg-white/5 rounded-xl" />
-                   <div className="grid grid-cols-3 gap-4">
-                     {[1,2,3].map(i => <div key={i} className="h-32 bg-white/5 rounded-xl border border-white/5" />)}
-                   </div>
-                   <div className="flex-1 bg-white/5 rounded-xl border border-white/5" />
-                </div>
-             </div>
-          </div>
+             
+             {/* THE REAL OVERVIEW SCREENSHOT */}
+             <img 
+               src="/screenshots/Overview.png" 
+               alt="Organize Your Club Dashboard Overview" 
+               className="w-full rounded-xl border border-white/5 shadow-2xl object-cover"
+             />
+          </button>
         </div>
       </section>
 
-      {/* FEATURES GRID */}
+      {/* FEATURES GRID WITH IMAGES */}
       <section className="py-24 px-6 relative border-t border-white/5 bg-white/[0.02]">
         <div className="max-w-7xl mx-auto">
           <div className="text-center max-w-2xl mx-auto mb-16">
@@ -167,12 +161,33 @@ export function LandingPage() {
             {features.map((feature, idx) => {
               const Icon = feature.icon;
               return (
-                <div key={idx} className="glass-card p-8 rounded-2xl border border-white/5 hover:border-[var(--primary)]/30 transition-all duration-300 group hover:-translate-y-1 bg-gradient-to-br from-white/[0.03] to-transparent">
-                  <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center mb-6 border border-white/5 transition-colors", feature.bg, feature.color)}>
-                    <Icon className="w-6 h-6" />
+                <div key={idx} className="glass-card flex flex-col p-6 rounded-2xl border border-white/5 hover:border-[var(--primary)]/30 transition-all duration-300 group hover:-translate-y-1 bg-gradient-to-br from-white/[0.03] to-transparent overflow-hidden">
+                  <div className="flex-1">
+                    <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center mb-6 border border-white/5 transition-colors", feature.bg, feature.color)}>
+                      <Icon className="w-6 h-6" />
+                    </div>
+                    <h3 className="text-xl font-bold mb-3">{feature.title}</h3>
+                    <p className="text-muted-foreground text-sm leading-relaxed mb-6">{feature.description}</p>
                   </div>
-                  <h3 className="text-xl font-bold mb-3">{feature.title}</h3>
-                  <p className="text-muted-foreground text-sm leading-relaxed">{feature.description}</p>
+                  
+                  {/* FEATURE SCREENSHOT INSERT - Made Clickable for Lightbox */}
+                  <button 
+                    onClick={() => setSelectedImage(feature.image)} 
+                    className="w-full mt-auto relative rounded-xl overflow-hidden border border-white/10 shadow-lg group-hover:shadow-[var(--primary)]/20 transition-all cursor-zoom-in"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#0B0F1A] via-transparent to-transparent z-10 opacity-80" />
+                    {/* Hover hint icon on thumbnails */}
+                    <div className="absolute inset-0 z-20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                      <div className="bg-white/10 backdrop-blur-sm p-3 rounded-full border border-white/20">
+                        <ZoomIn className="w-6 h-6 text-white" />
+                      </div>
+                    </div>
+                    <img 
+                      src={feature.image} 
+                      alt={feature.title} 
+                      className="w-full object-cover object-left-top h-48 sm:h-40 group-hover:scale-105 transition-transform duration-700 ease-out" 
+                    />
+                  </button>
                 </div>
               );
             })}
@@ -207,7 +222,7 @@ export function LandingPage() {
             <div className="glass-card p-6 rounded-2xl border border-white/10 shadow-2xl relative">
               <div className="space-y-4">
                 <div className="flex items-center justify-between border-b border-white/5 pb-4">
-                  <div><p className="font-bold text-sm">Boomer Parker</p><p className="text-xs text-muted-foreground">Member</p></div>
+                  <div><p className="font-bold text-sm">Lorenzo Maurice</p><p className="text-xs text-muted-foreground">Member</p></div>
                   <div className="px-2 py-1 rounded bg-[var(--primary)]/20 text-[var(--primary)] text-xs font-bold border border-[var(--primary)]/30">Permissions Saved</div>
                 </div>
                 {[
@@ -270,7 +285,7 @@ export function LandingPage() {
                   <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Name <span className="text-[var(--primary)]">*</span></Label>
                   <Input 
                     name="name" value={formData.name} onChange={handleInputChange} required
-                    placeholder="Jane Doe" 
+                    placeholder="Keith Cole" 
                     className="bg-white/5 border-white/10 text-white focus-visible:ring-[var(--primary)]"
                   />
                 </div>
@@ -279,7 +294,7 @@ export function LandingPage() {
                   <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Email Address <span className="text-[var(--primary)]">*</span></Label>
                   <Input 
                     name="email" type="email" value={formData.email} onChange={handleInputChange} required
-                    placeholder="jane@university.edu" 
+                    placeholder="keith@university.edu" 
                     className="bg-white/5 border-white/10 text-white focus-visible:ring-[var(--primary)]"
                   />
                 </div>
@@ -330,6 +345,25 @@ export function LandingPage() {
               </div>
 
             </form>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* --- IMAGE LIGHTBOX --- */}
+      <Dialog open={!!selectedImage} onOpenChange={() => setSelectedImage(null)}>
+        {/* Customized Content container for the lightbox - wide max width, minimal padding */}
+        <DialogContent className="max-w-[95vw] md:max-w-7xl h-auto bg-[#0B0F1A] border-white/10 text-white p-4 overflow-hidden shadow-2xl">
+          <DialogHeader className="sr-only"> {/* Hidden title for accessibility */}
+            <DialogTitle>Image Preview</DialogTitle>
+          </DialogHeader>
+
+          {/* Container to center and scale image within viewport constraints */}
+          <div className="flex items-center justify-center p-2 relative cursor-zoom-out" onClick={() => setSelectedImage(null)}>
+             <img 
+                src={selectedImage || ""} 
+                alt="Enlarged screenshot" 
+                className="w-auto h-auto max-w-full max-h-[85vh] rounded-lg border-2 border-white/5 object-contain mx-auto shadow-2xl"
+              />
           </div>
         </DialogContent>
       </Dialog>

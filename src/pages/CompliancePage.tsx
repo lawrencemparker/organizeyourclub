@@ -66,10 +66,16 @@ export function CompliancePage() {
         }
       }
       setTasks(fetchedTasks);
-    } catch (error) { toast.error("Failed to sync records"); } finally { setLoading(false); }
+    } catch (error) { 
+      toast.error("Failed to sync records"); 
+    } finally { 
+      setLoading(false); 
+    }
   }, [user]);
 
-  useEffect(() => { fetchCompliance(); }, [fetchCompliance]);
+  useEffect(() => { 
+    fetchCompliance(); 
+  }, [fetchCompliance]);
 
   const stats = useMemo(() => {
     const total = tasks.length;
@@ -83,59 +89,116 @@ export function CompliancePage() {
     try {
       const { error } = await supabase.from('compliance').delete().eq('id', id);
       if (error) throw error;
-      toast.success("Requirement removed"); fetchCompliance();
-    } catch (err) { toast.error("Delete failed"); }
+      toast.success("Requirement removed"); 
+      fetchCompliance();
+    } catch (err) { 
+      toast.error("Delete failed"); 
+    }
   };
 
-  if (loading) return <div className="flex justify-center py-20"><Loader2 className="animate-spin text-[var(--primary)]" /></div>;
+  if (loading) {
+    return (
+      <div className="flex justify-center py-20">
+        <Loader2 className="animate-spin text-[var(--primary)]" />
+      </div>
+    );
+  }
 
   return (
-    <div className="p-3 sm:p-5 space-y-3"> 
-      <div className="flex items-center justify-end h-8">
+    <div className="p-6 sm:p-8 space-y-8"> 
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <PageHeader title="Compliance" subtitle="Chapter & University Requirements" />
         {canCreateCompliance && (
-          <Button variant="outline" size="sm" onClick={() => { setEditingTask(null); setIsFormOpen(true); }} className="h-8 border-[var(--primary)]/20 text-[var(--primary)] hover:bg-[var(--primary)]/5 text-xs font-bold px-4 transition-colors">
-            <Plus className="w-3 h-3 mr-2" /> Add Task
+          <Button 
+            onClick={() => { setEditingTask(null); setIsFormOpen(true); }} 
+            className="bg-[var(--primary)] text-white hover:opacity-90 transition-all shadow-lg font-bold"
+          >
+            <Plus className="w-4 h-4 mr-2" /> Add Requirement
           </Button>
         )}
       </div>
-      <PageHeader title="Compliance" subtitle="Chapter & University Requirements" />
-      <div className="glass-card p-3 border-l-4 border-[var(--primary)] flex items-center justify-between gap-4 h-16 transition-colors duration-300">
-        <div className="flex-1"><h3 className="text-xs font-bold uppercase tracking-tight text-[var(--primary)]">Overall Progress</h3><p className="text-[10px] font-medium text-muted-foreground">{stats.completed} of {stats.total} items completed</p></div>
-        <div className="flex items-center gap-4"><span className="text-2xl font-black tracking-tighter text-[var(--primary)]">{stats.percent}%</span><div className="w-24 h-1.5 bg-[var(--primary)]/10 rounded-full overflow-hidden"><div className="h-full bg-[var(--primary)] transition-all duration-1000 ease-out" style={{ width: `${stats.percent}%` }} /></div></div>
+
+      {/* OVERALL PROGRESS: Decreased width by 65% (taking up 35% space) and left-justified */}
+      <div className="w-full lg:w-[35%]">
+        <div className="glass-card p-4 border-l-4 border-[var(--primary)] flex items-center justify-between gap-4 h-auto shadow-sm transition-colors duration-300">
+          <div className="flex-1">
+            <h3 className="text-xs font-bold uppercase tracking-tight text-[var(--primary)]">Overall Progress</h3>
+            <p className="text-[10px] font-medium text-muted-foreground mt-0.5">{stats.completed} of {stats.total} items completed</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-xl font-black tracking-tighter text-[var(--primary)]">{stats.percent}%</span>
+            <div className="w-16 h-1.5 bg-[var(--primary)]/10 rounded-full overflow-hidden">
+              <div className="h-full bg-[var(--primary)] transition-all duration-1000 ease-out" style={{ width: `${stats.percent}%` }} />
+            </div>
+          </div>
+        </div>
       </div>
-      <div className="grid gap-1.5">
+
+      {/* NEW CARD DESIGN FOR COMPLIANCE TASKS */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {tasks.map((task) => {
-          const isExpanded = expandedId === task.id;
           const statusLower = task.status?.toLowerCase();
           return (
-            <div key={task.id} className="glass-card overflow-hidden transition-all border-border/10 group">
-              <div className="p-2.5 flex items-center justify-between h-14"> 
-                <div className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer" onClick={() => setExpandedId(isExpanded ? null : task.id)}>
-                  {statusLower === "completed" ? <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" /> : statusLower === "overdue" ? <AlertCircle className="w-4 h-4 text-red-500 shrink-0" /> : <Clock className="w-4 h-4 text-orange-500 shrink-0" />}
-                  <div className="min-w-0"><h4 className="text-sm font-semibold truncate group-hover:text-[var(--primary)] transition-colors">{task.title}</h4><div className="flex items-center gap-2 text-[10px] text-muted-foreground"><Calendar className="w-3 h-3 opacity-60" /> <span className="font-medium">Due: {task.due_date}</span></div></div>
+            <div key={task.id} className="glass-card flex flex-col p-5 gap-4 relative border border-white/5 hover:border-[var(--primary)]/30 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
+              <div className="flex justify-between items-start gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="p-2.5 rounded-xl bg-white/5 shrink-0 flex items-center justify-center">
+                    {statusLower === "completed" ? <CheckCircle2 className="w-5 h-5 text-emerald-500" /> : statusLower === "overdue" ? <AlertCircle className="w-5 h-5 text-rose-500" /> : <Clock className="w-5 h-5 text-amber-500" />}
+                  </div>
+                  <div className="pt-0.5">
+                    <h4 className="text-sm font-bold text-white leading-tight mb-1.5">{task.title}</h4>
+                    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground font-medium">
+                      <Calendar className="w-3 h-3 opacity-70" /> Due: {task.due_date}
+                    </div>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant="secondary" className={cn("text-[9px] h-5 px-2 capitalize font-bold border-transparent", statusLower === "completed" ? "bg-green-500/10 text-green-500" : statusLower === "overdue" ? "bg-red-500/10 text-red-500" : "bg-orange-500/10 text-orange-500")}>{task.status}</Badge>
-                  {canCreateCompliance && (
+
+                {/* CRUD ACTIONS - Permissions Intact */}
+                {canCreateCompliance && (
+                  <div className="shrink-0 -mr-2 -mt-2">
                     <DropdownMenu>
-                      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7 opacity-30 group-hover:opacity-100 transition-opacity"><MoreVertical className="w-3.5 h-3.5" /></Button></DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-32">
-                        <DropdownMenuItem onClick={() => { setEditingTask(task); setIsFormOpen(true); }} className="text-xs cursor-pointer"><Edit2 className="w-3 h-3 mr-2" /> Edit</DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive text-xs cursor-pointer" onClick={() => handleDelete(task.id)}><Trash2 className="w-3 h-3 mr-2" /> Delete</DropdownMenuItem>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-white">
+                          <MoreVertical className="w-4 h-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-36 bg-[#1A1F2E] border-white/10 text-white">
+                        <DropdownMenuItem onClick={() => { setEditingTask(task); setIsFormOpen(true); }} className="text-xs cursor-pointer hover:bg-white/5 focus:bg-white/5">
+                          <Edit2 className="w-3 h-3 mr-2" /> Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="text-rose-400 text-xs cursor-pointer hover:bg-rose-400/10 focus:bg-rose-400/10" onClick={() => handleDelete(task.id)}>
+                          <Trash2 className="w-3 h-3 mr-2" /> Delete
+                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
-              {isExpanded && (
-                <div className="px-9 pb-3 animate-in slide-in-from-top-2 duration-200">
-                  <div className="p-3 rounded-lg bg-white/5 border border-white/5 text-[11px] leading-relaxed text-muted-foreground italic"><div className="flex items-center gap-1.5 mb-1 text-foreground font-bold not-italic"><Info className="w-3 h-3 text-[var(--primary)]" /> Requirement Details</div>{task.description || "No additional instructions provided for this requirement."}</div>
-                </div>
-              )}
+
+              {/* DESCRIPTION AREA */}
+              <div className="flex-1 text-xs text-muted-foreground leading-relaxed line-clamp-4">
+                {task.description || "No additional instructions provided for this requirement."}
+              </div>
+
+              {/* CARD FOOTER & STATUS */}
+              <div className="pt-4 mt-auto border-t border-white/5 flex items-center justify-between">
+                <Badge 
+                  variant="secondary" 
+                  className={cn(
+                    "text-[10px] px-3 py-1 capitalize font-bold border", 
+                    statusLower === "completed" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : 
+                    statusLower === "overdue" ? "bg-rose-500/10 text-rose-400 border-rose-500/20" : 
+                    "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                  )}
+                >
+                  {task.status}
+                </Badge>
+              </div>
             </div>
           );
         })}
       </div>
+      
       <ComplianceForm open={isFormOpen} onOpenChange={setIsFormOpen} taskToEdit={editingTask} onSuccess={fetchCompliance} />
     </div>
   );

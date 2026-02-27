@@ -97,7 +97,7 @@ function PermissionsManagerComponent({ orgId }: { orgId: string }) {
         <div><h3 className="text-lg font-bold flex items-center gap-2"><Key className="w-5 h-5 text-[var(--primary)]" />Permissions Manager</h3><p className="text-sm text-muted-foreground mt-1">Manage role-based access control and page-level security.</p></div>
       </div>
       <div className="flex flex-col md:flex-row gap-6">
-        <div className="w-full md:w-64 space-y-2 shrink-0 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
+        <div className="w-full md:w-64 space-y-2 shrink-0 max-h-[600px] overflow-y-auto pr-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-white/20">
           <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3 px-2">Select User</h4>
           <div className="space-y-1">
             {users.map((u) => (
@@ -261,10 +261,6 @@ export function SettingsPage() {
                 <div className="p-5 rounded-xl border border-white/10 bg-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 group hover:border-[var(--primary)]/30 transition-all">
                   <div className="flex items-start gap-4"><div className="w-12 h-12 rounded-lg bg-white flex items-center justify-center shrink-0"><GoogleDriveIcon /></div><div><h4 className="font-semibold text-foreground flex items-center gap-2">Google Drive</h4><p className="text-xs text-muted-foreground mt-1">Attach Google Docs, Sheets, and PDFs.</p></div></div>
                   <Button variant="default" size="sm" onClick={handleOpenGooglePicker} className="bg-blue-600 hover:bg-blue-700 text-white min-w-[160px] font-medium">Add from Google Drive</Button>
-                </div>
-                <div className="p-5 rounded-xl border border-white/10 bg-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 group hover:border-[var(--primary)]/30 transition-all">
-                  <div className="flex items-start gap-4"><div className="w-12 h-12 rounded-lg bg-[#0078D4] flex items-center justify-center shrink-0"><Cloud className="w-7 h-7 text-white" /></div><div><h4 className="font-semibold text-foreground flex items-center gap-2">Microsoft OneDrive</h4><p className="text-xs text-muted-foreground mt-1">Attach Word, Excel, and PowerPoint files.</p></div></div>
-                  <Button variant="default" size="sm" onClick={() => toast.info("OneDrive integration coming soon!")} className="bg-[#0078D4] hover:opacity-90 text-white min-w-[160px] font-medium">Add from OneDrive</Button>
                 </div>
               </div>
             </div>

@@ -102,14 +102,14 @@ export function MembersPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to remove this member from the organization?")) return;
+    if (!confirm("Are you sure you want to delete this member?")) return;
     try {
       const { error } = await supabase.from('members').delete().eq('id', id);
       if (error) throw error;
-      toast.success("Member removed successfully");
+      toast.success("Member deleted successfully");
       fetchMembers();
     } catch (error) {
-      toast.error("Failed to remove member");
+      toast.error("Failed to delete member");
     }
   };
 
@@ -178,6 +178,7 @@ export function MembersPage() {
         const email = extractedEmails[i];
         setBulkProgress({ current: i + 1, total: extractedEmails.length, failed: failedCount });
 
+        // Check if this email already exists in the members table
         const { data: existing } = await supabase
           .from('members')
           .select('id, status')
@@ -185,11 +186,14 @@ export function MembersPage() {
           .eq('email', email)
           .maybeSingle();
 
+        // Only skip if they are already an ACTIVE member — 
+        // Pending means they never got (or never clicked) the invite, so re-send it.
         if (existing && existing.status?.toLowerCase() === 'active') {
           skippedCount++;
           continue;
         }
 
+        // Insert only if they are not in the table at all
         if (!existing) {
           const { error: insertError } = await supabase
             .from('members')
@@ -209,6 +213,7 @@ export function MembersPage() {
           }
         }
 
+        // Throttle BEFORE every send so the edge function is never hit cold
         await new Promise(resolve => setTimeout(resolve, 1500));
 
         const { error: invokeError } = await supabase.functions.invoke("request-access", {
@@ -325,7 +330,7 @@ export function MembersPage() {
                 <th className="p-4 text-xs font-bold text-muted-foreground uppercase tracking-wider">Role</th>
                 <th className="p-4 text-xs font-bold text-muted-foreground uppercase tracking-wider">Status</th>
                 <th className="p-4 text-xs font-bold text-muted-foreground uppercase tracking-wider">Joined</th>
-                <th className="p-4 text-right"></th>
+                <th className="p-4 text-xs font-bold text-muted-foreground uppercase tracking-wider text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -369,10 +374,8 @@ export function MembersPage() {
                     </td>
                     <td className="p-4">
                       <Badge className={cn(
-                        "capitalize border",
-                        member.status?.toLowerCase() === 'active' && "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-                        member.status?.toLowerCase() === 'pending' && "bg-orange-500/10 text-orange-400 border-orange-500/20",
-                        member.status?.toLowerCase() === 'inactive' && "bg-rose-500/10 text-rose-400 border-rose-500/20"
+                        "capitalize",
+                        member.status === 'active' ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-amber-500/10 text-amber-400 border-amber-500/20"
                       )}>
                         {member.status}
                       </Badge>
@@ -395,7 +398,7 @@ export function MembersPage() {
                           )}
                           {canDelete && (
                             <DropdownMenuItem onClick={() => handleDelete(member.id)} className="cursor-pointer text-rose-400 hover:bg-rose-400/10 focus:bg-rose-400/10">
-                              <Trash2 className="w-4 h-4 mr-2" /> Remove
+                              <Trash2 className="w-4 h-4 mr-2" /> Delete
                             </DropdownMenuItem>
                           )}
                         </DropdownMenuContent>

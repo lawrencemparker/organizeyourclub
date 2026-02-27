@@ -123,7 +123,7 @@ export function ComplianceForm({ open, onOpenChange, taskToEdit, onSuccess }: Co
           </div>
 
           <Button type="submit" variant="gradient" className="w-full" disabled={loading}>
-            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (taskToEdit ? "Save Changes" : "Create Task")}
+            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (taskToEdit ? "Save Changes" : "Create Requirement")}
           </Button>
         </form>
       </SheetContent>
