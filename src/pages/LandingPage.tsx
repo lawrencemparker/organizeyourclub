@@ -82,7 +82,7 @@ export function LandingPage() {
   return (
     <div className="min-h-screen bg-[#0B0F1A] text-white selection:bg-[var(--primary)] selection:text-white overflow-hidden">
       
-      {/* NAVIGATION - "OC" Badge Removed */}
+      {/* NAVIGATION */}
       <nav className="fixed top-0 w-full z-40 border-b border-white/5 bg-[#0B0F1A]/80 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -99,7 +99,7 @@ export function LandingPage() {
         </div>
       </nav>
 
-      {/* HERO SECTION - "View Live Demo" Removed */}
+      {/* HERO SECTION */}
       <section className="relative pt-32 pb-20 md:pt-48 md:pb-32 px-6">
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[400px] bg-[var(--primary)]/20 blur-[120px] rounded-full pointer-events-none" />
         
@@ -131,7 +131,7 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* DASHBOARD PREVIEW - Using .png extension */}
+      {/* DASHBOARD PREVIEW */}
       <section className="px-6 pb-24 relative z-20">
         <div className="max-w-6xl mx-auto">
           <button 
@@ -152,7 +152,7 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* FEATURES GRID - Using .png extensions */}
+      {/* FEATURES GRID */}
       <section className="py-24 px-6 relative border-t border-white/5 bg-white/[0.02]">
         <div className="max-w-7xl mx-auto">
           <div className="text-center max-w-2xl mx-auto mb-16">
@@ -263,13 +263,13 @@ export function LandingPage() {
       {/* LEAD CAPTURE MODAL */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="sm:max-w-[700px] bg-[#0B0F1A] border-white/10 text-white p-0 overflow-hidden shadow-2xl">
-          {/* Mobile-Friendly Close Button */}
+          {/* Mobile-Friendly Close Button - Dropped down and scaled down */}
           <button 
             onClick={() => setIsModalOpen(false)}
-            className="absolute right-4 top-4 z-50 p-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 transition-colors md:hidden"
+            className="absolute right-6 top-8 z-50 p-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 transition-colors md:hidden"
             aria-label="Close modal"
           >
-            <Plus className="w-6 h-6 rotate-45 text-white" />
+            <Plus className="w-5 h-5 rotate-45 text-white" />
           </button>
 
           <div className="h-2 w-full bg-[var(--primary)] relative">
