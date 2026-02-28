@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { 
   ShieldCheck, Users, Calendar, Wallet, FileText, 
-  Mail, ArrowRight, CheckCircle2, Cloud, Loader2, ZoomIn
+  Mail, ArrowRight, CheckCircle2, Cloud, Loader2, ZoomIn, Plus
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -263,12 +263,22 @@ export function LandingPage() {
       {/* LEAD CAPTURE MODAL */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="sm:max-w-[700px] bg-[#0B0F1A] border-white/10 text-white p-0 overflow-hidden shadow-2xl">
+          {/* Mobile-Friendly Close Button */}
+          <button 
+            onClick={() => setIsModalOpen(false)}
+            className="absolute right-4 top-4 z-50 p-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 transition-colors md:hidden"
+            aria-label="Close modal"
+          >
+            <Plus className="w-6 h-6 rotate-45 text-white" />
+          </button>
+
           <div className="h-2 w-full bg-[var(--primary)] relative">
             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent opacity-50" />
           </div>
+          
           <div className="p-6 sm:p-8">
             <DialogHeader className="mb-6 text-left">
-              <DialogTitle className="text-2xl font-black">Get Started Today</DialogTitle>
+              <DialogTitle className="text-2xl font-black pr-8">Get Started Today</DialogTitle>
               <DialogDescription className="text-muted-foreground">
                 Want to learn more about how we can streamline your chapter's operations? Fill out the details below to request more information or a personalized demo.
               </DialogDescription>
