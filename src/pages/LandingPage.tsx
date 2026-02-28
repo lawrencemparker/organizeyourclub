@@ -263,10 +263,10 @@ export function LandingPage() {
       {/* LEAD CAPTURE MODAL */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="sm:max-w-[700px] bg-[#0B0F1A] border-white/10 text-white p-0 overflow-hidden shadow-2xl">
-          {/* Mobile-Friendly Close Button - Dropped down and scaled down */}
+          {/* Mobile-Friendly Close Button - Dropped further down for better visibility */}
           <button 
             onClick={() => setIsModalOpen(false)}
-            className="absolute right-6 top-8 z-50 p-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 transition-colors md:hidden"
+            className="absolute right-6 top-12 z-50 p-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 transition-colors md:hidden"
             aria-label="Close modal"
           >
             <Plus className="w-5 h-5 rotate-45 text-white" />
