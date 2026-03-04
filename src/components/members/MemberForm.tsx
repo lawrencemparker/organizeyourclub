@@ -1,132 +1,95 @@
 import { useState, useEffect } from "react";
-import { 
-  Dialog, DialogContent, DialogDescription, 
-  DialogHeader, DialogTitle 
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
+import { useForm } from "react-hook-form";
 import { Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { supabase } from "@/lib/supabase";
-import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
 
-export function MemberForm({ open, onOpenChange, onSuccess, member }: { open: boolean, onOpenChange: (open: boolean) => void, onSuccess: () => void, member?: any }) {
+interface MemberFormProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  member?: any;
+  onSuccess: () => Promise<void>;
+}
+
+export function MemberForm({ open, onOpenChange, member, onSuccess }: MemberFormProps) {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
-  
-  const [formData, setFormData] = useState({
-    full_name: "",
-    email: "",
-    phone: "",
-    role: "Member",
-    status: "Pending",
-    major: "",
-    gpa: ""
-  });
+  const { register, handleSubmit, reset, setValue, watch } = useForm();
 
-  // Pre-fill form when the "member" prop changes
   useEffect(() => {
-    if (member && open) {
-      setFormData({
-        full_name: member.name || member.full_name || "",
-        email: member.email || "",
-        phone: member.phone || "",
-        role: member.role || "Member",
-        status: member.status || "Pending",
-        major: member.major || "",
-        gpa: member.gpa || ""
-      });
-    } else if (!member && open) {
-      // Reset for a new member
-      setFormData({ full_name: "", email: "", phone: "", role: "Member", status: "Pending", major: "", gpa: "" });
-    }
-  }, [member, open]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-
-    try {
-      const emailToSubmit = formData.email.trim();
-      
-      // Get the admin's organization_id early
-      const { data: profile } = await supabase.from('profiles').select('organization_id').eq('id', user?.id).single();
-      const currentOrgId = profile?.organization_id;
-
-      // --- MVP DUPLICATE CHECK ---
-      // Check if we are adding a new member OR changing an existing member's email
-      if (!member || member.email !== emailToSubmit) {
-        const { data: existingMember } = await supabase
-          .from('members')
-          .select('id')
-          .eq('org_id', currentOrgId)
-          .ilike('email', emailToSubmit) // Case-insensitive check
-          .maybeSingle();
-
-        if (existingMember) {
-          toast.error("This email is already registered within this organization.");
-          setLoading(false);
-          return; // Stop execution to prevent duplicate
-        }
-      }
-
+    if (open) {
       if (member) {
-        // UPDATE EXISTING MEMBER
-        const { error } = await supabase
-          .from('members')
-          .update({
-            full_name: formData.full_name,
-            email: emailToSubmit,
-            phone: formData.phone,
-            role: formData.role,
-            status: formData.status,
-            major: formData.major,
-            gpa: formData.gpa
-          })
-          .eq('id', member.id);
-
-        if (error) throw error;
-        toast.success("Member updated successfully");
-
+        setValue("full_name", member.full_name || "");
+        setValue("email", member.email || "");
+        setValue("phone", member.phone || "");
+        // Force incoming role to lowercase so the dropdown recognizes it perfectly
+        setValue("role", member.role?.toLowerCase() || "member");
+        setValue("status", member.status || "Active");
+        setValue("major", member.major || "");
+        setValue("gpa", member.gpa || "");
       } else {
-        // ADD NEW MEMBER
-        const { error: insertError } = await supabase.from('members').insert([{
-          org_id: currentOrgId,
-          full_name: formData.full_name,
-          email: emailToSubmit,
-          phone: formData.phone,
-          role: formData.role,
-          status: formData.status,
-          major: formData.major,
-          gpa: formData.gpa
-        }]);
-        
-        if (insertError) throw insertError;
-        
-        // MVP FIX 1: 1500ms transaction buffer so Postgres fully commits the row before the Edge Function checks for it
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        
-        // MVP FIX 2: Use the exact same request-access Edge Function as the bulk invite, strictly checking for errors
-        const { error: invokeError } = await supabase.functions.invoke("request-access", {
-          body: {
-            email: emailToSubmit,
-            redirectTo: `${window.location.origin}/overview`
-          }
+        reset({
+          full_name: "",
+          email: "",
+          phone: "",
+          role: "member", // Default to lowercase member
+          status: "Active",
+          major: "",
+          gpa: ""
         });
+      }
+    }
+  }, [open, member, setValue, reset]);
 
-        if (invokeError) {
-          console.error(`Invite failed for ${emailToSubmit}:`, invokeError);
-          throw new Error("Member added to roster, but failed to send the invite email. Please try resending.");
-        }
+  const onSubmit = async (data: any) => {
+    setLoading(true);
+    try {
+      // FIX: Sanitize GPA to ensure empty string is sent as null to the numeric column
+      const payload = {
+        ...data,
+        gpa: data.gpa && data.gpa !== "" ? parseFloat(data.gpa) : null,
+      };
 
-        toast.success("Member added and invite sent!");
+      let error;
+      if (member) {
+        const { error: updateError } = await supabase
+          .from('members')
+          .update(payload)
+          .eq('id', member.id);
+        error = updateError;
+      } else {
+        const { data: profile } = await supabase.from('profiles').select('organization_id').eq('id', user?.id).single();
+        const { error: insertError } = await supabase.from('members').insert({
+          ...payload,
+          org_id: profile?.organization_id,
+        });
+        error = insertError;
       }
 
-      onSuccess();
+      if (error) throw error;
+      toast.success(member ? "Member updated successfully" : "Member added successfully");
+      await onSuccess();
       onOpenChange(false);
     } catch (error: any) {
-      toast.error(error.message || "Failed to save member");
+      toast.error(error.message || "Operation failed");
     } finally {
       setLoading(false);
     }
@@ -134,85 +97,77 @@ export function MemberForm({ open, onOpenChange, onSuccess, member }: { open: bo
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px] bg-[#0B0F1A] border-white/10 text-white">
+      <DialogContent className="sm:max-w-[500px] bg-[#0B0F1A] border-white/10 text-white shadow-2xl">
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold">
-            {member ? "Edit Member" : "Add New Member"}
-          </DialogTitle>
-          <DialogDescription className="text-gray-400">
-            {member 
-              ? "Update the details for this member." 
-              : "Add a new member and send an automated invitation"}
+          <DialogTitle>{member ? "Edit Member" : "Add Member"}</DialogTitle>
+          <DialogDescription className="text-muted-foreground">
+            {member ? "Update the details for this member." : "Add a new member to your organization."}
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4 pt-4">
-          <div className="space-y-2">
-            <Label className="text-xs font-bold text-gray-400 uppercase">Full Name *</Label>
-            <Input required value={formData.full_name} onChange={e => setFormData({...formData, full_name: e.target.value})} placeholder="e.g. Boom Parker" className="bg-white/5 border-white/10 text-white focus:border-[var(--primary)]" />
-          </div>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2 md:col-span-2">
+              <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Full Name <span className="text-[var(--primary)]">*</span></Label>
+              <Input {...register("full_name", { required: true })} placeholder="e.g. Lawrence Parker" className="bg-white/5 border-white/10 focus-visible:ring-[var(--primary)] text-white" />
+            </div>
 
-          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label className="text-xs font-bold text-gray-400 uppercase">Email *</Label>
-              <Input type="email" required value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="user@example.com" className="bg-white/5 border-white/10 text-white focus:border-[var(--primary)]" />
+              <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Email <span className="text-[var(--primary)]">*</span></Label>
+              <Input type="email" {...register("email", { required: true })} placeholder="lawrence@example.com" className="bg-white/5 border-white/10 focus-visible:ring-[var(--primary)] text-white" disabled={!!member} />
             </div>
-            <div className="space-y-2">
-              <Label className="text-xs font-bold text-gray-400 uppercase">Phone</Label>
-              <Input value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} placeholder="555-0123" className="bg-white/5 border-white/10 text-white focus:border-[var(--primary)]" />
-            </div>
-          </div>
 
-          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label className="text-xs font-bold text-gray-400 uppercase">Role</Label>
-              <select 
-                value={formData.role} 
-                onChange={e => setFormData({...formData, role: e.target.value})} 
-                disabled={!member}
-                className={`flex h-10 w-full rounded-md border border-white/10 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--primary)] ${!member ? 'bg-black/40 opacity-60 cursor-not-allowed' : 'bg-white/5'}`}
-              >
-                <option value="Admin" className="bg-[#0B0F1A]">Admin</option>
-                <option value="President" className="bg-[#0B0F1A]">President</option>
-                <option value="Vice President" className="bg-[#0B0F1A]">Vice President</option>
-                <option value="Social Chair" className="bg-[#0B0F1A]">Social Chair</option>
-                <option value="Rush Chair" className="bg-[#0B0F1A]">Rush Chair</option>
-                <option value="Member" className="bg-[#0B0F1A]">Member</option>
-              </select>
+              <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Phone</Label>
+              <Input type="tel" {...register("phone")} placeholder="555-0123" className="bg-white/5 border-white/10 focus-visible:ring-[var(--primary)] text-white" />
             </div>
-            <div className="space-y-2">
-              <Label className="text-xs font-bold text-gray-400 uppercase">Status</Label>
-              <select 
-                value={formData.status} 
-                onChange={e => setFormData({...formData, status: e.target.value})} 
-                disabled={!member}
-                className={`flex h-10 w-full rounded-md border border-white/10 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--primary)] ${!member ? 'bg-black/40 opacity-60 cursor-not-allowed' : 'bg-white/5'}`}
-              >
-                <option value="Pending" className="bg-[#0B0F1A]">Pending</option>
-                <option value="Active" className="bg-[#0B0F1A]">Active</option>
-                <option value="Inactive" className="bg-[#0B0F1A]">Inactive</option>
-              </select>
-            </div>
-          </div>
 
-          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label className="text-xs font-bold text-gray-400 uppercase">Major</Label>
-              <Input value={formData.major} onChange={e => setFormData({...formData, major: e.target.value})} placeholder="e.g. Business Admin" className="bg-white/5 border-white/10 text-white focus:border-[var(--primary)]" />
+              <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Role</Label>
+              {/* watch("role") checks the current selected value, defaulting to "member" */}
+              <Select onValueChange={(val) => setValue("role", val)} defaultValue={watch("role") || "member"}>
+                <SelectTrigger className="bg-white/5 border-white/10 focus:ring-[var(--primary)] text-white"><SelectValue /></SelectTrigger>
+                <SelectContent className="bg-[#1A1F2E] border-white/10 text-white">
+                  {/* Database gets the lowercase value, user sees the capitalized text */}
+                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="president">President</SelectItem>
+                  <SelectItem value="vice president">Vice President</SelectItem>
+                  <SelectItem value="social chair">Social Chair</SelectItem>
+                  <SelectItem value="rush chair">Rush Chair</SelectItem>
+                  <SelectItem value="member">Member</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
+
             <div className="space-y-2">
-              <Label className="text-xs font-bold text-gray-400 uppercase">GPA</Label>
-              <Input value={formData.gpa} onChange={e => setFormData({...formData, gpa: e.target.value})} placeholder="e.g. 3.5" className="bg-white/5 border-white/10 text-white focus:border-[var(--primary)]" />
+              <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Status</Label>
+              <Select onValueChange={(val) => setValue("status", val)} defaultValue={watch("status") || "Active"}>
+                <SelectTrigger className="bg-white/5 border-white/10 focus:ring-[var(--primary)] text-white"><SelectValue /></SelectTrigger>
+                <SelectContent className="bg-[#1A1F2E] border-white/10 text-white">
+                  <SelectItem value="Active">Active</SelectItem>
+                  <SelectItem value="Pending">Pending</SelectItem>
+                  <SelectItem value="Inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Major</Label>
+              <Input {...register("major")} placeholder="e.g. Business Admin" className="bg-white/5 border-white/10 focus-visible:ring-[var(--primary)] text-white" />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">GPA</Label>
+              <Input type="number" step="0.01" {...register("gpa")} placeholder="e.g. 3.5" className="bg-white/5 border-white/10 focus-visible:ring-[var(--primary)] text-white" />
             </div>
           </div>
 
-          <div className="flex justify-end gap-3 pt-4 border-t border-white/10">
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} className="text-white hover:bg-white/10">
+          <div className="pt-4 flex justify-end gap-3 border-t border-white/10 mt-6">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="border-white/10 text-muted-foreground hover:text-white bg-transparent">
               Cancel
             </Button>
-            <Button type="submit" disabled={loading} className="bg-[#EF4444] text-white hover:opacity-90 font-bold px-6">
-              {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              {member ? "Update" : "Create & Invite"}
+            <Button type="submit" disabled={loading} className="bg-[var(--primary)] text-white hover:opacity-90 min-w-[100px]">
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : (member ? "Update" : "Add Member")}
             </Button>
           </div>
         </form>

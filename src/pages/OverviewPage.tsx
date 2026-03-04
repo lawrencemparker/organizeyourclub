@@ -182,10 +182,10 @@ export function OverviewPage() {
                       <td className="px-6 py-4 text-right">
                         <Badge variant="outline" className={cn(
                           statusLower === "active" 
-                            ? "border-[var(--primary)]/30 text-[var(--primary)] bg-[var(--primary)]/10" 
+                            ? "border-emerald-500/30 text-emerald-500 bg-emerald-500/10" 
                             : statusLower === "pending"
                               ? "border-orange-500/30 text-orange-500 bg-orange-500/10"
-                              : "border-red-500/30 text-red-500 bg-red-500/10"
+                              : "border-red-400/30 text-red-400 bg-red-400/10"
                         )}>
                           {m.status || 'Unknown'}
                         </Badge>

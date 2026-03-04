@@ -1,5 +1,9 @@
-import { useState, useEffect } from "react";
-import { Search, FileText, FolderOpen, Plus, Cloud, HardDrive, Loader2, ExternalLink, Trash2, MoreVertical, ShieldCheck } from "lucide-react";
+import { useState, useEffect, useRef, DragEvent } from "react";
+import { 
+  Search, FileText, FolderOpen, Plus, Cloud, HardDrive, 
+  Loader2, ExternalLink, Trash2, MoreVertical, ShieldCheck, 
+  UploadCloud, X, Upload
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,6 +11,13 @@ import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogDescription 
+} from "@/components/ui/dialog";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -27,10 +38,20 @@ export function DocumentsPage() {
   const [documents, setDocuments] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [orgId, setOrgId] = useState<string | null>(null);
+  const [uploaderName, setUploaderName] = useState<string>("");
   
   const [canCreate, setCanCreate] = useState(false);
   const [canDelete, setCanDelete] = useState(false);
   const [openDrivePicker] = useDrivePicker();
+
+  // Native Upload State
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [stagedFiles, setStagedFiles] = useState<File[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB limit
 
   useEffect(() => { 
     fetchDocumentsAndPermissions(); 
@@ -45,7 +66,7 @@ export function DocumentsPage() {
 
       const { data: currentMember } = await supabase
         .from('members')
-        .select('role, permissions')
+        .select('role, permissions, full_name')
         .eq('email', user.email)
         .eq('org_id', profile.organization_id)
         .maybeSingle();
@@ -53,6 +74,10 @@ export function DocumentsPage() {
       const role = currentMember?.role?.toLowerCase() || '';
       const isSuper = role === 'admin' || role === 'president';
       const perms = currentMember?.permissions?.['Documents'] || {};
+
+      if (currentMember?.full_name) {
+        setUploaderName(currentMember.full_name);
+      }
 
       // ─── URL REDIRECT SECURITY ───
       if (!isSuper && perms.read === false) {
@@ -99,6 +124,7 @@ export function DocumentsPage() {
             size: "Cloud File", 
             source: 'google', 
             url: doc.url, 
+            uploaded_by: uploaderName || user?.email || 'Unknown User',
             created_at: new Date().toISOString()
           }));
           const { error } = await supabase.from('documents').insert(newDocs);
@@ -126,6 +152,132 @@ export function DocumentsPage() {
     }
   };
 
+  // ─── NATIVE DRAG & DROP UPLOAD LOGIC ───
+  const processFiles = (files: FileList | File[]) => {
+    const validFiles: File[] = [];
+    
+    // Define allowed MIME types including MS Word
+    const allowedTypes = [
+      'application/pdf', 
+      'image/png', 
+      'image/jpeg',
+      'application/msword', // .doc
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document' // .docx
+    ];
+    
+    Array.from(files).forEach(file => {
+      const isValidType = allowedTypes.includes(file.type);
+      const isValidSize = file.size <= MAX_FILE_SIZE;
+
+      if (!isValidType) {
+        toast.error(`Blocked: "${file.name}" is not a supported file type (.pdf, .doc, .docx, .png, .jpg only)`);
+        return;
+      }
+      if (!isValidSize) {
+        toast.error(`Blocked: "${file.name}" exceeds the strict 5MB limit.`);
+        return;
+      }
+      
+      // Prevent duplicates in staging
+      if (stagedFiles.some(f => f.name === file.name && f.size === file.size)) return;
+      
+      validFiles.push(file);
+    });
+
+    if (validFiles.length > 0) {
+      setStagedFiles(prev => [...prev, ...validFiles]);
+    }
+  };
+
+  const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      processFiles(e.dataTransfer.files);
+    }
+  };
+
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      processFiles(e.target.files);
+    }
+    // Reset input so the same file can be selected again if removed
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const removeStagedFile = (indexToRemove: number) => {
+    setStagedFiles(prev => prev.filter((_, idx) => idx !== indexToRemove));
+  };
+
+  const executeUpload = async () => {
+    if (!orgId || stagedFiles.length === 0) return;
+    setIsUploading(true);
+    toast.loading(`Uploading ${stagedFiles.length} file(s)...`);
+
+    try {
+      const uploadedDocs = [];
+
+      for (const file of stagedFiles) {
+        const fileExt = file.name.split('.').pop();
+        const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '');
+        const storagePath = `${orgId}/${Date.now()}_${safeName}`;
+
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('documents')
+          .upload(storagePath, file);
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('documents')
+          .getPublicUrl(storagePath);
+          
+        // Determine type for badge display
+        let docType = 'Document';
+        if (file.type.includes('pdf')) docType = 'PDF';
+        else if (file.type.includes('image')) docType = 'Image';
+        else if (file.type.includes('word')) docType = 'Word Doc';
+
+        uploadedDocs.push({
+          org_id: orgId,
+          name: file.name,
+          type: docType,
+          size: `${(file.size / (1024 * 1024)).toFixed(2)} MB`,
+          source: 'native',
+          url: publicUrl,
+          uploaded_by: uploaderName || user?.email || 'Unknown User',
+          created_at: new Date().toISOString()
+        });
+      }
+
+      // Insert metadata into database
+      const { error: dbError } = await supabase.from('documents').insert(uploadedDocs);
+      if (dbError) throw dbError;
+
+      toast.dismiss();
+      toast.success("Files successfully uploaded and secured!");
+      setStagedFiles([]);
+      setIsUploadModalOpen(false);
+      fetchDocumentsAndPermissions();
+
+    } catch (error: any) {
+      toast.dismiss();
+      toast.error(`Upload failed: ${error.message}`);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const filteredDocs = documents.filter(doc => doc.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
   if (loading) {
@@ -143,10 +295,16 @@ export function DocumentsPage() {
         subtitle="Centralized repository for all organization files."
         actions={
           canCreate && (
-            <Button onClick={handleOpenGooglePicker} className="bg-white text-black hover:bg-gray-100 shadow-md border border-gray-200">
-              <GoogleIcon /> 
-              <span className="ml-2">Add from Drive</span>
-            </Button>
+            <div className="flex gap-3">
+              <Button onClick={() => setIsUploadModalOpen(true)} className="bg-[var(--primary)] text-white hover:opacity-90 shadow-md">
+                <UploadCloud className="w-4 h-4 mr-2" /> 
+                Upload Files
+              </Button>
+              <Button onClick={handleOpenGooglePicker} className="bg-white text-black hover:bg-gray-100 shadow-md border border-gray-200">
+                <GoogleIcon /> 
+                <span className="ml-2">Add from Drive</span>
+              </Button>
+            </div>
           )
         }
       />
@@ -160,15 +318,7 @@ export function DocumentsPage() {
             <p className="text-xl font-bold">{documents.length}</p>
           </div>
         </div>
-        <div className="glass-card p-4 flex items-center gap-4">
-          <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-500">
-            <ShieldCheck className="w-6 h-6" />
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground uppercase font-bold">Security Status</p>
-            <p className="text-sm font-bold text-emerald-500">Isolated & Protected</p>
-          </div>
-        </div>
+        {/* Removed Static Security Badge */}
       </div>
       
       <div className="glass-card min-h-[500px] flex flex-col">
@@ -176,10 +326,8 @@ export function DocumentsPage() {
           <div className="p-4 border-b border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4">
             <TabsList className="bg-white/5">
               <TabsTrigger value="all">All Files</TabsTrigger>
-              {/* Collections Tab Removed */}
             </TabsList>
             
-            {/* Removed flex-1 to prevent stretching, set a firm max-width */}
             <div className="relative w-full sm:max-w-sm">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input 
@@ -200,6 +348,7 @@ export function DocumentsPage() {
                     <th className="px-6 py-3">Source</th>
                     <th className="px-6 py-3">Type</th>
                     <th className="px-6 py-3">Date Added</th>
+                    <th className="px-6 py-3">Uploaded By</th>
                     <th className="px-6 py-3 text-right">Actions</th>
                   </tr>
                 </thead>
@@ -215,9 +364,13 @@ export function DocumentsPage() {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        {doc.source === 'google' && (
+                        {doc.source === 'google' ? (
                           <div className="flex items-center gap-2 text-xs text-muted-foreground">
                             <GoogleIcon /> Drive
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <HardDrive className="w-4 h-4" /> Native
                           </div>
                         )}
                       </td>
@@ -228,6 +381,9 @@ export function DocumentsPage() {
                       </td>
                       <td className="px-6 py-4 text-muted-foreground">
                         {new Date(doc.created_at).toLocaleDateString()}
+                      </td>
+                      <td className="px-6 py-4 text-muted-foreground">
+                        {doc.uploaded_by || 'Unknown'}
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
@@ -254,7 +410,7 @@ export function DocumentsPage() {
                   ))}
                   {filteredDocs.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="text-center py-12 text-muted-foreground">
+                      <td colSpan={6} className="text-center py-12 text-muted-foreground">
                         No documents found.
                       </td>
                     </tr>
@@ -265,6 +421,105 @@ export function DocumentsPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* ─── NATIVE UPLOAD MODAL ─── */}
+      <Dialog open={isUploadModalOpen} onOpenChange={setIsUploadModalOpen}>
+        <DialogContent className="sm:max-w-[600px] bg-[#0B0F1A] border-white/10 text-white shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold flex items-center gap-2">
+              <UploadCloud className="w-5 h-5 text-[var(--primary)]" />
+              Upload Static Assets
+            </DialogTitle>
+            <DialogDescription className="text-muted-foreground pt-2 leading-relaxed">
+              Please only upload standard, day-to-day club files (e.g., expense receipts, single-page flyers, multi-page bylaws, or meeting minutes). <br/>
+              <span className="font-semibold text-white/80">Max 5MB per file. Accepted formats: .PDF, .DOC, .DOCX, .PNG, .JPG.</span> <br/>
+              For living documents, presentations, and large media, please use the Google Drive integration.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-4 space-y-4">
+            {/* DRAG AND DROP ZONE */}
+            <div 
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              className={`
+                relative w-full h-48 rounded-xl border-2 border-dashed flex flex-col items-center justify-center p-6 text-center cursor-pointer transition-all duration-200
+                ${isDragging ? 'border-[var(--primary)] bg-[var(--primary)]/5' : 'border-white/20 bg-white/5 hover:bg-white/10 hover:border-white/30'}
+              `}
+            >
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleFileInput} 
+                className="hidden" 
+                multiple 
+                accept=".pdf, .png, .jpg, .jpeg, .doc, .docx"
+              />
+              <div className="p-4 rounded-full bg-white/5 mb-3 pointer-events-none">
+                <UploadCloud className={`w-8 h-8 ${isDragging ? 'text-[var(--primary)]' : 'text-muted-foreground'}`} />
+              </div>
+              <p className="text-sm font-medium pointer-events-none">
+                <span className="text-[var(--primary)]">Click to browse</span> or drag and drop files here
+              </p>
+            </div>
+
+            {/* STAGED FILES LIST WITH CUSTOM SCROLLBAR */}
+            {stagedFiles.length > 0 && (
+              <div className="space-y-2 mt-6">
+                <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Ready to upload ({stagedFiles.length})</p>
+                <div className="max-h-48 overflow-y-auto space-y-2 pr-2 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-white/20">
+                  {stagedFiles.map((file, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/10 group">
+                      <div className="flex items-center gap-3 overflow-hidden">
+                        <div className="p-2 rounded bg-white/10 text-white shrink-0">
+                          <FileText className="w-4 h-4" />
+                        </div>
+                        <div className="truncate">
+                          <p className="text-sm font-medium truncate">{file.name}</p>
+                          <p className="text-xs text-muted-foreground">{(file.size / (1024 * 1024)).toFixed(2)} MB</p>
+                        </div>
+                      </div>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        onClick={(e) => { e.stopPropagation(); removeStagedFile(idx); }}
+                        className="text-muted-foreground hover:text-red-400 hover:bg-red-400/10 shrink-0"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="pt-4 flex justify-end gap-3 border-t border-white/10 mt-6">
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={() => {
+                setStagedFiles([]);
+                setIsUploadModalOpen(false);
+              }} 
+              className="border-white/10 text-muted-foreground hover:text-white bg-transparent"
+              disabled={isUploading}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={executeUpload} 
+              disabled={stagedFiles.length === 0 || isUploading} 
+              className="bg-[var(--primary)] text-white hover:opacity-90 min-w-[120px]"
+            >
+              {isUploading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Upload className="w-4 h-4 mr-2" />}
+              {isUploading ? "Uploading..." : `Upload ${stagedFiles.length > 0 ? `(${stagedFiles.length})` : ''}`}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

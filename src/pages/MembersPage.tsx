@@ -373,11 +373,13 @@ export function MembersPage() {
                       </Badge>
                     </td>
                     <td className="p-4">
-                      <Badge className={cn(
+                      <Badge variant="outline" className={cn(
                         "capitalize",
-                        member.status === 'active' ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                        member.status?.toLowerCase() === 'active' ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : 
+                        member.status?.toLowerCase() === 'pending' ? "bg-orange-500/10 text-orange-400 border-orange-500/20" : 
+                        "bg-red-400/10 text-red-400 border-red-400/20"
                       )}>
-                        {member.status}
+                        {member.status || 'Unknown'}
                       </Badge>
                     </td>
                     <td className="p-4 text-sm text-muted-foreground">
