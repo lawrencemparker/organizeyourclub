@@ -3,6 +3,7 @@ import { Toaster } from "sonner";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Loader2 } from "lucide-react";
+import { PrivacyPage } from "@/pages/PrivacyPage";
 
 // Standard Imports (Reverted from lazy loading for maximum mobile stability)
 import { LandingPage } from "@/pages/LandingPage";
@@ -56,12 +57,16 @@ export default function App() {
     <Router>
       <AuthProvider>
         <Routes>
+		
           {/* Admin Route */}
           <Route path="/admin" element={<TenantAdminPage />} />
 
           {/* Public / Marketing Routes */}
           <Route path="/" element={<PublicRoute><LandingPage /></PublicRoute>} />
           <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
+		  
+		  {/* Add this PUBLIC route before your protected routes */}
+		<Route path="/privacy" element={<PrivacyPage />} />
           
           {/* Protected App Routes */}
           <Route path="/overview" element={<PrivateRoute><OverviewPage /></PrivateRoute>} />
@@ -73,6 +78,8 @@ export default function App() {
           <Route path="/history" element={<PrivateRoute><HistoryPage /></PrivateRoute>} />
           <Route path="/settings" element={<PrivateRoute><SettingsPage /></PrivateRoute>} />
           
+
+		  
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
