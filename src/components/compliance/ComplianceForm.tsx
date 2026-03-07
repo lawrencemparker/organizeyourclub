@@ -33,14 +33,26 @@ interface ComplianceFormProps {
 export function ComplianceForm({ open, onOpenChange, taskToEdit, onSuccess }: ComplianceFormProps) {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
-  const { register, handleSubmit, reset, setValue } = useForm();
+  
+  // FIX: Added 'watch' to strictly control the dropdown UI state
+  const { register, handleSubmit, reset, setValue, watch } = useForm();
+  const currentStatus = watch("status");
+
+  useEffect(() => {
+    // Explicitly bind the custom dropdown to the form payload
+    register("status");
+  }, [register]);
 
   useEffect(() => {
     if (open) {
       if (taskToEdit) {
         setValue("title", taskToEdit.title);
         setValue("description", taskToEdit.description);
-        setValue("status", taskToEdit.status);
+        
+        // FIX: Ensure exact case matching for the dropdown value
+        const exactStatus = taskToEdit.status === "overdue" ? "Overdue" : taskToEdit.status;
+        setValue("status", exactStatus);
+        
         setValue("due_date", taskToEdit.due_date);
       } else {
         reset({
@@ -49,6 +61,7 @@ export function ComplianceForm({ open, onOpenChange, taskToEdit, onSuccess }: Co
           title: "",
           description: ""
         });
+        setValue("status", "pending");
       }
     }
   }, [open, taskToEdit, setValue, reset]);
@@ -107,8 +120,9 @@ export function ComplianceForm({ open, onOpenChange, taskToEdit, onSuccess }: Co
 
           <div className="space-y-2">
             <Label>Status</Label>
-            <Select onValueChange={(val) => setValue("status", val)} defaultValue={taskToEdit?.status || "pending"}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+            {/* FIX: Changed from defaultValue to a strictly controlled 'value' */}
+            <Select value={currentStatus} onValueChange={(val) => setValue("status", val)}>
+              <SelectTrigger><SelectValue placeholder="Select Status" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="pending">Pending</SelectItem>
                 <SelectItem value="completed">Completed</SelectItem>

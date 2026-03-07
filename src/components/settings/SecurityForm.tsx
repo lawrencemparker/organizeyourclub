@@ -18,7 +18,7 @@ export function SecurityForm() {
   const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // FIX: Strict password validation matching security settings
+    // FIX: Re-applied the strict regex requirement to enforce security standards
     const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
     if (!passwordRegex.test(formData.newPassword)) {
       toast.error("Password must be at least 8 characters and include uppercase, lowercase, numbers, and symbols.");
@@ -41,7 +41,7 @@ export function SecurityForm() {
       toast.success("Password updated successfully");
       setFormData({ newPassword: "", confirmPassword: "" });
     } catch (error: any) {
-      // FIX: Cleanly catch stale sessions and instruct the user how to fix it
+      // FIX: Cleanly handle stale sessions
       if (error.message?.includes("Auth session missing")) {
         toast.error("Your session has expired for security purposes. Please log out and log back in to change your password.");
       } else {

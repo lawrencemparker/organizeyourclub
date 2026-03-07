@@ -183,7 +183,6 @@ export function SettingsPage() {
           const isSuper = role === 'admin' || role === 'president';
           const perms = currentMember?.permissions?.['Settings'] || {};
 
-          // ─── URL REDIRECT SECURITY ───
           if (!isSuper && perms.read === false) {
             toast.error("Access Denied: You do not have permission to view Settings.");
             navigate('/overview', { replace: true });
@@ -202,11 +201,12 @@ export function SettingsPage() {
     openDrivePicker({
       clientId: GOOGLE_CLIENT_ID, 
       developerKey: GOOGLE_API_KEY, 
-      viewId: "DOCS", 
-      showUploadView: false, // FIX: Disabled upload tab to prevent Google 403 API Error
+      // FIX: Removed `viewId: "DOCS"` because it overrides showUploadView in the library
+      showUploadView: false, 
       showUploadFolders: false, 
       supportDrives: true, 
       multiselect: true,
+      customViews: [{ viewId: "DOCS", showItemDate: true }], 
       callbackFunction: async (data: any, authResponse: any) => {
         if (data.action === "picked") {
           toast.loading("Saving documents...");

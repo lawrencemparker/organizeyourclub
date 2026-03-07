@@ -82,10 +82,14 @@ export function TransactionForm({ open, onOpenChange, transactionToEdit, onSucce
     setLoading(true);
     try {
       const transactionType = data.type || "income";
-      
-      // FIX: Always send a positive number to the database to prevent RLS/Check constraint errors.
-      // The 'type' column (income/expense) will dictate how it behaves in the ledger.
-      const finalAmount = rawAmount; 
+      const finalAmount = transactionType === 'expense' ? -rawAmount : rawAmount; 
+
+      // Fetch the current user's name to attach to the submitted_by column
+      const { data: memberData } = await supabase
+        .from('members')
+        .select('org_id, full_name')
+        .eq('email', user?.email)
+        .maybeSingle();
 
       let error;
 
@@ -98,18 +102,19 @@ export function TransactionForm({ open, onOpenChange, transactionToEdit, onSucce
             type: transactionType, 
             category: data.category || 'Dues',
             transaction_date: data.transaction_date,
+            // Keep original submitter on edit, or update it if you prefer
           })
           .eq('id', transactionToEdit.id);
         error = updateError;
       } else {
-        const { data: profile } = await supabase.from('profiles').select('organization_id').eq('id', user?.id).single();
         const { error: insertError } = await supabase.from('finances').insert({
-          organization_id: profile?.organization_id,
+          organization_id: memberData?.org_id,
           description: data.description,
           amount: finalAmount,
           type: transactionType, 
           category: data.category || 'Dues',
           transaction_date: data.transaction_date,
+          submitted_by: memberData?.full_name || user?.email // NEW: Captures the submitter!
         });
         error = insertError;
       }

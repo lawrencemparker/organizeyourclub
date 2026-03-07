@@ -12,14 +12,17 @@ serve(async (req) => {
   }
 
   try {
-    const { to, subject, message, orgId } = await req.json()
+    const { to, subject, message } = await req.json()
     const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
 
     if (!RESEND_API_KEY) {
-      throw new Error("RESEND_API_KEY is not set in the Edge Function environment.")
+      // FIX: Return 200 status with an error body so Supabase doesn't hide the message!
+      return new Response(
+        JSON.stringify({ error: "Missing RESEND_API_KEY in Supabase secrets. Please run the secrets set command." }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+      )
     }
 
-    // Call Resend to fire the email
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
@@ -27,9 +30,8 @@ serve(async (req) => {
         'Authorization': `Bearer ${RESEND_API_KEY}`,
       },
       body: JSON.stringify({
-        from: 'Organize Your Club <onboarding@organizeyourclub.com>',
-        to: ['onboarding@organizeyourclub.com'], // Send to self
-        bcc: to, // Blind Carbon Copy (BCC) the array of members for privacy!
+        from: 'Organize Your Club <notifications@organizeyourclub.com>',
+        to: to, 
         subject: subject,
         html: `<p>${message.replace(/\n/g, '<br/>')}</p>`,
       }),
@@ -38,7 +40,11 @@ serve(async (req) => {
     const data = await res.json()
 
     if (!res.ok) {
-      throw new Error(data.message || "Failed to send email via Resend")
+      // FIX: Force the exact Resend error text to the frontend UI
+      return new Response(
+        JSON.stringify({ error: `Resend API Error: ${data.message}` }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+      )
     }
 
     return new Response(
@@ -47,8 +53,8 @@ serve(async (req) => {
     )
   } catch (error: any) {
     return new Response(
-      JSON.stringify({ error: error.message }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+      JSON.stringify({ error: `Edge Function Catch: ${error.message}` }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
     )
   }
 })

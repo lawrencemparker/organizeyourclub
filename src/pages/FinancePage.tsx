@@ -57,14 +57,11 @@ export function FinancePage() {
       const isSuper = resolvedRole === 'admin' || resolvedRole === 'president';
       const perms = currentMember?.permissions?.['Finances'] || {};
 
-      // ─── URL REDIRECT SECURITY ──────────────────────────────────────
-      // If the user is NOT an admin, and their Read permission is explicitly false, kick them out!
       if (!isSuper && perms.read === false) {
         toast.error("Access Denied: You do not have permission to view Finances.");
         navigate('/overview', { replace: true });
         return; 
       }
-      // ────────────────────────────────────────────────────────────────
 
       setCanCreateFinance(isSuper || !!perms.create);
 
@@ -129,10 +126,11 @@ export function FinancePage() {
       return;
     }
 
-    const headers = ["Date", "Description", "Category", "Type", "Amount"];
+    // FIX: Included Submitted By in CSV Export
+    const headers = ["Date", "Description", "Category", "Submitted By", "Type", "Amount"];
     const csvData = filteredTransactions.map(t => {
       const cleanDesc = t.description ? t.description.replace(/"/g, '""') : "";
-      return `${t.transaction_date},"${cleanDesc}","${t.category}",${t.type},${t.amount}`;
+      return `${t.transaction_date},"${cleanDesc}","${t.category}","${t.submitted_by || 'Unknown'}",${t.type},${t.amount}`;
     });
 
     const csvContent = [headers.join(","), ...csvData].join("\n");
@@ -235,6 +233,8 @@ export function FinancePage() {
                 <th className="px-6 py-4">Date</th>
                 <th className="px-6 py-4">Description</th>
                 <th className="px-6 py-4">Category</th>
+                {/* FIX: New Submitted By Header */}
+                <th className="px-6 py-4">Submitted By</th>
                 <th className="px-6 py-4 text-right">Amount</th>
                 {canCreateFinance && <th className="px-6 py-4 text-right">Actions</th>}
               </tr>
@@ -246,6 +246,11 @@ export function FinancePage() {
                   <td className="px-6 py-4 font-medium">{t.description}</td>
                   <td className="px-6 py-4">
                     <Badge variant="secondary" className="font-normal bg-white/5 hover:bg-white/10">{t.category}</Badge>
+                  </td>
+                  
+                  {/* FIX: New Submitted By Data Cell */}
+                  <td className="px-6 py-4 text-muted-foreground capitalize">
+                    {t.submitted_by || 'Unknown'}
                   </td>
                   
                   <td className={cn("px-6 py-4 font-bold text-right", t.type === 'income' ? "text-green-500" : "text-red-500")}>
@@ -275,7 +280,7 @@ export function FinancePage() {
               ))}
               {filteredTransactions.length === 0 && (
                 <tr>
-                  <td colSpan={canCreateFinance ? 5 : 4} className="px-6 py-12 text-center text-muted-foreground">
+                  <td colSpan={canCreateFinance ? 6 : 5} className="px-6 py-12 text-center text-muted-foreground">
                     No transactions found. {canCreateFinance ? 'Click "Add Transaction" to get started.' : ''}
                   </td>
                 </tr>
