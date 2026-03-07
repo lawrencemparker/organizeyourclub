@@ -33,14 +33,10 @@ export function TransactionForm({ open, onOpenChange, transactionToEdit, onSucce
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   
-  // We added 'watch' to actively track the dropdown state
   const { register, handleSubmit, reset, setValue, watch } = useForm();
-  
-  // Track the current type to enforce the UI selection
   const currentType = watch("type");
 
   useEffect(() => {
-    // Explicitly bind the custom dropdown to the form payload
     register("type");
     register("category");
   }, [register]);
@@ -61,21 +57,35 @@ export function TransactionForm({ open, onOpenChange, transactionToEdit, onSucce
           amount: "",
           description: ""
         });
-        // Force the dropdown to 'income' on fresh open
         setValue("type", "income"); 
       }
     }
   }, [open, transactionToEdit, setValue, reset]);
 
   const onSubmit = async (data: any) => {
+    if (!data.description?.trim()) {
+      toast.error("Please enter a description.");
+      return;
+    }
+    
+    if (!data.amount) {
+      toast.error("Please enter a valid numeric amount greater than 0.");
+      return;
+    }
+
+    const rawAmount = Math.abs(Number(data.amount));
+    if (isNaN(rawAmount) || rawAmount === 0) {
+      toast.error("Please enter a valid numeric amount greater than 0.");
+      return;
+    }
+
     setLoading(true);
     try {
-      // Safely grab the type from our controlled state
       const transactionType = data.type || "income";
       
-      const finalAmount = transactionType === 'expense' 
-        ? -Math.abs(Number(data.amount)) 
-        : Math.abs(Number(data.amount));
+      // FIX: Always send a positive number to the database to prevent RLS/Check constraint errors.
+      // The 'type' column (income/expense) will dictate how it behaves in the ledger.
+      const finalAmount = rawAmount; 
 
       let error;
 
@@ -85,7 +95,7 @@ export function TransactionForm({ open, onOpenChange, transactionToEdit, onSucce
           .update({
             description: data.description,
             amount: finalAmount,
-            type: transactionType, // <--- THIS WAS MISSING
+            type: transactionType, 
             category: data.category || 'Dues',
             transaction_date: data.transaction_date,
           })
@@ -97,7 +107,7 @@ export function TransactionForm({ open, onOpenChange, transactionToEdit, onSucce
           organization_id: profile?.organization_id,
           description: data.description,
           amount: finalAmount,
-          type: transactionType, // <--- THIS WAS MISSING
+          type: transactionType, 
           category: data.category || 'Dues',
           transaction_date: data.transaction_date,
         });
@@ -129,7 +139,6 @@ export function TransactionForm({ open, onOpenChange, transactionToEdit, onSucce
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
           <div className="space-y-2">
             <Label>Type</Label>
-            {/* Swapped defaultValue for strictly controlled 'value' */}
             <Select value={currentType} onValueChange={(val) => setValue("type", val)}>
               <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
               <SelectContent>
@@ -142,14 +151,14 @@ export function TransactionForm({ open, onOpenChange, transactionToEdit, onSucce
             <Label>Description</Label>
             <div className="relative">
               <AlignLeft className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input {...register("description", { required: true })} className="pl-9" placeholder="e.g. Venue Deposit" />
+              <Input {...register("description")} className="pl-9" placeholder="e.g. Venue Deposit" />
             </div>
           </div>
           <div className="space-y-2">
             <Label>Amount ($)</Label>
             <div className="relative">
               <DollarSign className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input type="number" step="0.01" {...register("amount", { required: true })} className="pl-9" placeholder="0.00" />
+              <Input type="number" step="0.01" {...register("amount")} className="pl-9" placeholder="0.00" />
             </div>
           </div>
           <div className="space-y-2">

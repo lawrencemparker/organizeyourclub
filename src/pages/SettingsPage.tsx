@@ -200,7 +200,13 @@ export function SettingsPage() {
   const handleOpenGooglePicker = () => {
     if (!orgId) return;
     openDrivePicker({
-      clientId: GOOGLE_CLIENT_ID, developerKey: GOOGLE_API_KEY, viewId: "DOCS", showUploadView: true, showUploadFolders: true, supportDrives: true, multiselect: true,
+      clientId: GOOGLE_CLIENT_ID, 
+      developerKey: GOOGLE_API_KEY, 
+      viewId: "DOCS", 
+      showUploadView: false, // FIX: Disabled upload tab to prevent Google 403 API Error
+      showUploadFolders: false, 
+      supportDrives: true, 
+      multiselect: true,
       callbackFunction: async (data: any, authResponse: any) => {
         if (data.action === "picked") {
           toast.loading("Saving documents...");

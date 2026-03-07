@@ -113,7 +113,8 @@ export function HistoryPage() {
 
   return (
     <div className="p-6 sm:p-8 space-y-8">
-      <PageHeader title="History & Logs" subtitle="Audit trail of system activity and communications." />
+      {/* FIX: Updated Header and Subtitle text strictly per request */}
+      <PageHeader title="History" subtitle="Audit trail of email communications." />
       <div className="glass-card min-h-[500px] flex flex-col">
         <div className="p-4 border-b border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4 bg-white/5">
           <h3 className="font-semibold text-lg px-2">Communications</h3>

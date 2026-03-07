@@ -75,7 +75,8 @@ export function MembersPage() {
         .from('members')
         .select('*')
         .eq('org_id', profile.organization_id)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: true });
 
       if (error) throw error;
       setMembers(roster || []);
@@ -106,7 +107,12 @@ export function MembersPage() {
     try {
       const { error } = await supabase.from('members').delete().eq('id', id);
       if (error) throw error;
+      
       toast.success("Member deleted successfully");
+      
+      // FIX: Actively remove the deleted member's ID from the selected list so the Email button hides
+      setSelectedMembers((prevSelected) => prevSelected.filter((memberId) => memberId !== id));
+      
       fetchMembers();
     } catch (error) {
       toast.error("Failed to delete member");
@@ -125,7 +131,7 @@ export function MembersPage() {
         .filter(m => selectedMembers.includes(m.id))
         .map(m => m.email);
 
-      const { error } = await supabase.functions.invoke('send-bulk-email', {
+      const { data, error } = await supabase.functions.invoke('send-bulk-email', {
         body: {
           to: recipients,
           subject: emailSubject,
@@ -134,16 +140,17 @@ export function MembersPage() {
         }
       });
 
-      if (error) throw error;
+      if (error) throw new Error(error.message || "The Edge Function failed to execute.");
+      if (data?.error) throw new Error(data.error);
 
       toast.success(`Email sent to ${recipients.length} members`);
       setIsEmailModalOpen(false);
       setEmailSubject("");
       setEmailMessage("");
       setSelectedMembers([]);
-    } catch (error) {
-      console.error("Email error:", error);
-      toast.error("Failed to send email");
+    } catch (error: any) {
+      console.error("Detailed Email error:", error);
+      toast.error(`Error: ${error.message}`);
     } finally {
       setIsSending(false);
     }
@@ -178,7 +185,6 @@ export function MembersPage() {
         const email = extractedEmails[i];
         setBulkProgress({ current: i + 1, total: extractedEmails.length, failed: failedCount });
 
-        // Check if this email already exists in the members table
         const { data: existing } = await supabase
           .from('members')
           .select('id, status')
@@ -186,21 +192,18 @@ export function MembersPage() {
           .eq('email', email)
           .maybeSingle();
 
-        // Only skip if they are already an ACTIVE member — 
-        // Pending means they never got (or never clicked) the invite, so re-send it.
         if (existing && existing.status?.toLowerCase() === 'active') {
           skippedCount++;
           continue;
         }
 
-        // Insert only if they are not in the table at all
         if (!existing) {
           const { error: insertError } = await supabase
             .from('members')
             .insert([{
               org_id: orgId,
               email: email,
-              full_name: email.split('@')[0],
+              full_name: '',
               role: 'member',
               status: 'Pending'
             }]);
@@ -213,7 +216,6 @@ export function MembersPage() {
           }
         }
 
-        // Throttle BEFORE every send so the edge function is never hit cold
         await new Promise(resolve => setTimeout(resolve, 1500));
 
         const { error: invokeError } = await supabase.functions.invoke("request-access", {
@@ -255,10 +257,20 @@ export function MembersPage() {
   };
 
   const filteredMembers = members.filter(m => 
-    m.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (m.full_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     m.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
     m.role.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const formatToMMDDYYYY = (dateString: string) => {
+    if (!dateString) return "";
+    const datePart = dateString.split('T')[0];
+    const parts = datePart.split('-');
+    if (parts.length === 3) {
+      return `${parts[1]}/${parts[2]}/${parts[0]}`;
+    }
+    return dateString;
+  };
 
   return (
     <div className="p-8">
@@ -364,7 +376,7 @@ export function MembersPage() {
                       />
                     </td>
                     <td className="p-4">
-                      <div className="font-medium text-white">{member.full_name}</div>
+                      <div className="font-medium text-white">{member.full_name || 'Unnamed Member'}</div>
                       <div className="text-sm text-muted-foreground">{member.email}</div>
                     </td>
                     <td className="p-4">
@@ -383,7 +395,7 @@ export function MembersPage() {
                       </Badge>
                     </td>
                     <td className="p-4 text-sm text-muted-foreground">
-                      {new Date(member.created_at).toLocaleDateString()}
+                      {formatToMMDDYYYY(member.created_at)}
                     </td>
                     <td className="p-4 text-right">
                       <DropdownMenu>
@@ -414,12 +426,17 @@ export function MembersPage() {
         </div>
       </div>
 
-      <Dialog open={isBulkModalOpen} onOpenChange={setIsBulkModalOpen}>
+      <Dialog open={isBulkModalOpen} onOpenChange={(val) => {
+        if (isBulkInviting) return;
+        setIsBulkModalOpen(val);
+      }}>
         <DialogContent className="bg-[#1A1F2E] border-white/10 text-white w-[95vw] sm:w-full sm:max-w-[500px] rounded-2xl">
           <DialogHeader>
             <DialogTitle>Bulk Invite Members</DialogTitle>
-            <DialogDescription className="text-muted-foreground">
+            <DialogDescription className="text-muted-foreground mt-2">
               Paste a list of email addresses separated by commas or new lines.
+              <br/>
+              <span className="inline-block mt-2 font-medium text-amber-400/90">Note: The send process cannot be canceled once started.</span>
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleBulkInvite} className="space-y-4 pt-4">
@@ -460,6 +477,7 @@ export function MembersPage() {
                 type="button" 
                 variant="outline" 
                 onClick={() => setIsBulkModalOpen(false)}
+                disabled={isBulkInviting}
                 className="border-white/10 text-muted-foreground hover:text-white"
               >
                 Cancel
@@ -488,12 +506,17 @@ export function MembersPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isEmailModalOpen} onOpenChange={setIsEmailModalOpen}>
+      <Dialog open={isEmailModalOpen} onOpenChange={(val) => {
+        if (isSending) return;
+        setIsEmailModalOpen(val);
+      }}>
         <DialogContent className="bg-[#1A1F2E] border-white/10 text-white w-[95vw] sm:w-full sm:max-w-[600px] rounded-2xl">
           <DialogHeader>
-            <DialogTitle>Send Bulk Email</DialogTitle>
-            <DialogDescription className="text-muted-foreground">
+            <DialogTitle>Send Email</DialogTitle>
+            <DialogDescription className="text-muted-foreground mt-2">
               Sending to {selectedMembers.length} selected recipients.
+              <br/>
+              <span className="inline-block mt-2 font-medium text-amber-400/90">Note: The send process cannot be canceled once started.</span>
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSendEmail} className="space-y-4 pt-4">
@@ -514,7 +537,8 @@ export function MembersPage() {
                 onChange={(e) => setEmailMessage(e.target.value)}
                 placeholder="Type your message here..."
                 rows={6}
-                className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] resize-none custom-scrollbar"
+                disabled={isSending}
+                className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] resize-none custom-scrollbar disabled:opacity-50"
                 required
               />
             </div>
@@ -523,6 +547,7 @@ export function MembersPage() {
                 type="button" 
                 variant="outline" 
                 onClick={() => setIsEmailModalOpen(false)}
+                disabled={isSending}
                 className="border-white/10 text-muted-foreground hover:text-white"
               >
                 Cancel

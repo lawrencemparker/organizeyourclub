@@ -18,9 +18,10 @@ export function SecurityForm() {
   const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Strictly require 8 characters
-    if (formData.newPassword.length < 8) {
-      toast.error("Password must be at least 8 characters.");
+    // FIX: Strict password validation matching security settings
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+    if (!passwordRegex.test(formData.newPassword)) {
+      toast.error("Password must be at least 8 characters and include uppercase, lowercase, numbers, and symbols.");
       return;
     }
 
@@ -40,7 +41,12 @@ export function SecurityForm() {
       toast.success("Password updated successfully");
       setFormData({ newPassword: "", confirmPassword: "" });
     } catch (error: any) {
-      toast.error(error.message || "Failed to update password");
+      // FIX: Cleanly catch stale sessions and instruct the user how to fix it
+      if (error.message?.includes("Auth session missing")) {
+        toast.error("Your session has expired for security purposes. Please log out and log back in to change your password.");
+      } else {
+        toast.error(error.message || "Failed to update password");
+      }
     } finally {
       setLoading(false);
     }
@@ -86,7 +92,6 @@ export function SecurityForm() {
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
-            {/* Added Requirement Helper Text */}
             <p className="text-[11px] text-muted-foreground/80 mt-1.5 leading-tight">
               Minimum 8 characters. Must include lowercase, uppercase, digits, and symbols.
             </p>

@@ -42,7 +42,13 @@ export function MemberForm({ open, onOpenChange, member, onSuccess }: MemberForm
         setValue("phone", member.phone || "");
         // Force incoming role to lowercase so the dropdown recognizes it perfectly
         setValue("role", member.role?.toLowerCase() || "member");
-        setValue("status", member.status || "Active");
+        
+        // Force incoming status to standard capitalization so it matches the SelectItem perfectly
+        const formattedStatus = member.status 
+          ? member.status.charAt(0).toUpperCase() + member.status.slice(1).toLowerCase() 
+          : "Pending";
+        setValue("status", formattedStatus);
+        
         setValue("major", member.major || "");
         setValue("gpa", member.gpa || "");
       } else {
@@ -51,7 +57,7 @@ export function MemberForm({ open, onOpenChange, member, onSuccess }: MemberForm
           email: "",
           phone: "",
           role: "member", // Default to lowercase member
-          status: "Active",
+          status: "Pending", // Default to Pending for new members
           major: "",
           gpa: ""
         });
@@ -82,10 +88,25 @@ export function MemberForm({ open, onOpenChange, member, onSuccess }: MemberForm
           org_id: profile?.organization_id,
         });
         error = insertError;
+
+        // FIX: Trigger the invitation email for newly added single members
+        if (!insertError) {
+          const { error: invokeError } = await supabase.functions.invoke("request-access", {
+            body: {
+              email: payload.email,
+              redirectTo: `${window.location.origin}/overview`
+            }
+          });
+          
+          if (invokeError) {
+            console.error("Failed to send invite email:", invokeError);
+            toast.warning("Member added, but the invitation email failed to send.");
+          }
+        }
       }
 
       if (error) throw error;
-      toast.success(member ? "Member updated successfully" : "Member added successfully");
+      toast.success(member ? "Member updated successfully" : "Member added and invited successfully!");
       await onSuccess();
       onOpenChange(false);
     } catch (error: any) {
@@ -124,11 +145,9 @@ export function MemberForm({ open, onOpenChange, member, onSuccess }: MemberForm
 
             <div className="space-y-2">
               <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Role</Label>
-              {/* watch("role") checks the current selected value, defaulting to "member" */}
-              <Select onValueChange={(val) => setValue("role", val)} defaultValue={watch("role") || "member"}>
+              <Select disabled={!member} onValueChange={(val) => setValue("role", val)} value={watch("role") || "member"}>
                 <SelectTrigger className="bg-white/5 border-white/10 focus:ring-[var(--primary)] text-white"><SelectValue /></SelectTrigger>
                 <SelectContent className="bg-[#1A1F2E] border-white/10 text-white">
-                  {/* Database gets the lowercase value, user sees the capitalized text */}
                   <SelectItem value="admin">Admin</SelectItem>
                   <SelectItem value="president">President</SelectItem>
                   <SelectItem value="vice president">Vice President</SelectItem>
@@ -141,7 +160,7 @@ export function MemberForm({ open, onOpenChange, member, onSuccess }: MemberForm
 
             <div className="space-y-2">
               <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Status</Label>
-              <Select onValueChange={(val) => setValue("status", val)} defaultValue={watch("status") || "Active"}>
+              <Select disabled={!member} onValueChange={(val) => setValue("status", val)} value={watch("status") || "Pending"}>
                 <SelectTrigger className="bg-white/5 border-white/10 focus:ring-[var(--primary)] text-white"><SelectValue /></SelectTrigger>
                 <SelectContent className="bg-[#1A1F2E] border-white/10 text-white">
                   <SelectItem value="Active">Active</SelectItem>

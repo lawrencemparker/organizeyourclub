@@ -112,7 +112,7 @@ export function ComplianceForm({ open, onOpenChange, taskToEdit, onSuccess }: Co
               <SelectContent>
                 <SelectItem value="pending">Pending</SelectItem>
                 <SelectItem value="completed">Completed</SelectItem>
-                <SelectItem value="overdue">Overdue</SelectItem>
+                <SelectItem value="Overdue">Overdue</SelectItem>
               </SelectContent>
             </Select>
           </div>

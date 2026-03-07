@@ -64,9 +64,10 @@ export function OverviewPage() {
 
       const [eventsRes, financeRes, complianceRes, membersRes] = await Promise.all([
         supabase.from('events').select('*').eq('organization_id', orgId).gte('start_time', nowIso).order('start_time', { ascending: true }).limit(4),
-        supabase.from('finances').select('*').eq('organization_id', orgId).order('transaction_date', { ascending: false }).limit(5),
+        // FIX: Re-enforcing the fix to fetch ALL transactions for accurate math calculations
+        supabase.from('finances').select('*').eq('organization_id', orgId).order('transaction_date', { ascending: false }),
         supabase.from('compliance').select('*').eq('organization_id', orgId).order('due_date', { ascending: true }),
-        supabase.from('members').select('*').eq('org_id', orgId).order('created_at', { ascending: false })
+        supabase.from('members').select('*').eq('org_id', orgId).order('created_at', { ascending: false }).order('id', { ascending: true })
       ]);
 
       const now = new Date();
@@ -109,6 +110,17 @@ export function OverviewPage() {
   }, [complianceTasks]);
 
   const recentMembers = useMemo(() => dbMembers.slice(0, 5), [dbMembers]);
+
+  // Helper to strictly format dates to mm/dd/YYYY
+  const formatToMMDDYYYY = (dateString: string) => {
+    if (!dateString) return "";
+    const datePart = dateString.split('T')[0];
+    const parts = datePart.split('-');
+    if (parts.length === 3) {
+      return `${parts[1]}/${parts[2]}/${parts[0]}`;
+    }
+    return dateString;
+  };
 
   if (loading) return <div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="w-8 h-8 animate-spin text-[var(--primary)] opacity-50" /></div>;
 
@@ -260,6 +272,7 @@ export function OverviewPage() {
 
           <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-4">Recent Transactions</h4>
           <div className="space-y-4">
+            {/* FIX: Applying .slice(0, 5) here ensures the UI only shows 5, while the math above calculates ALL data. */}
             {transactions.slice(0, 5).map(t => (
               <div key={t.id} className="flex items-center justify-between group">
                 <div className="flex items-center gap-3">
@@ -270,7 +283,7 @@ export function OverviewPage() {
                   </div>
                   <div>
                     <p className="text-sm font-medium group-hover:text-[var(--primary)] transition-colors">{t.description}</p>
-                    <p className="text-[10px] text-muted-foreground">{t.transaction_date}</p>
+                    <p className="text-[10px] text-muted-foreground">{formatToMMDDYYYY(t.transaction_date)}</p>
                   </div>
                 </div>
                 <span className={cn("text-sm font-bold", t.type === 'income' ? "text-green-500" : "text-red-500")}>
@@ -316,7 +329,7 @@ export function OverviewPage() {
                       <p className={cn("text-sm font-medium", statusLower === 'completed' ? "text-muted-foreground line-through" : "text-foreground")}>
                         {task.title}
                       </p>
-                      <p className="text-[10px] text-muted-foreground">Due: {task.due_date}</p>
+                      <p className="text-[10px] text-muted-foreground">Due: {formatToMMDDYYYY(task.due_date)}</p>
                     </div>
                   </div>
                   <Badge variant="outline" className={cn("text-[10px] px-2 h-5 border-transparent capitalize", 

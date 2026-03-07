@@ -96,6 +96,17 @@ export function CompliancePage() {
     }
   };
 
+  // FIX: Helper to strictly format dates to mm/dd/YYYY
+  const formatToMMDDYYYY = (dateString: string) => {
+    if (!dateString) return "";
+    const datePart = dateString.split('T')[0];
+    const parts = datePart.split('-');
+    if (parts.length === 3) {
+      return `${parts[1]}/${parts[2]}/${parts[0]}`;
+    }
+    return dateString;
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center py-20">
@@ -118,7 +129,6 @@ export function CompliancePage() {
         )}
       </div>
 
-      {/* OVERALL PROGRESS: Decreased width by 65% (taking up 35% space) and left-justified */}
       <div className="w-full lg:w-[35%]">
         <div className="glass-card p-4 border-l-4 border-[var(--primary)] flex items-center justify-between gap-4 h-auto shadow-sm transition-colors duration-300">
           <div className="flex-1">
@@ -134,7 +144,6 @@ export function CompliancePage() {
         </div>
       </div>
 
-      {/* NEW CARD DESIGN FOR COMPLIANCE TASKS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {tasks.map((task) => {
           const statusLower = task.status?.toLowerCase();
@@ -148,12 +157,12 @@ export function CompliancePage() {
                   <div className="pt-0.5">
                     <h4 className="text-sm font-bold text-white leading-tight mb-1.5">{task.title}</h4>
                     <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground font-medium">
-                      <Calendar className="w-3 h-3 opacity-70" /> Due: {task.due_date}
+                      {/* FIX: Applying the date formatter here */}
+                      <Calendar className="w-3 h-3 opacity-70" /> Due: {formatToMMDDYYYY(task.due_date)}
                     </div>
                   </div>
                 </div>
 
-                {/* CRUD ACTIONS - Permissions Intact */}
                 {canCreateCompliance && (
                   <div className="shrink-0 -mr-2 -mt-2">
                     <DropdownMenu>
@@ -175,12 +184,10 @@ export function CompliancePage() {
                 )}
               </div>
 
-              {/* DESCRIPTION AREA */}
               <div className="flex-1 text-xs text-muted-foreground leading-relaxed line-clamp-4">
                 {task.description || "No additional instructions provided for this requirement."}
               </div>
 
-              {/* CARD FOOTER & STATUS */}
               <div className="pt-4 mt-auto border-t border-white/5 flex items-center justify-between">
                 <Badge 
                   variant="secondary" 
