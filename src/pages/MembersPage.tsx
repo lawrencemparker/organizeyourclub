@@ -42,13 +42,15 @@ export function MembersPage() {
   const [emailSubject, setEmailSubject] = useState("");
   const [emailMessage, setEmailMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [senderName, setSenderName] = useState<string>("");
 
   const fetchMembers = async () => {
     if (!user) return;
     try {
-      const { data: profile } = await supabase.from('profiles').select('organization_id').eq('id', user.id).single();
+      const { data: profile } = await supabase.from('profiles').select('organization_id, full_name').eq('id', user.id).single();
       if (!profile?.organization_id) return;
       setOrgId(profile.organization_id);
+      setSenderName(profile.full_name || "");
 
       const { data: currentMember } = await supabase
         .from('members')
@@ -131,12 +133,18 @@ export function MembersPage() {
         .filter(m => selectedMembers.includes(m.id))
         .map(m => m.email);
 
+      // Use full_name sourced directly from the profiles table via fetchMembers
+      const senderFullName = senderName || user?.email?.split('@')[0] || "A Club Administrator";
+
       const { data, error } = await supabase.functions.invoke('send-bulk-email', {
         body: {
           to: recipients,
           subject: emailSubject,
           message: emailMessage,
-          orgId: orgId
+          orgId: orgId,
+          // FIX: Pass the sender's info to the Edge Function!
+          senderName: senderFullName,
+          senderEmail: user?.email 
         }
       });
 
