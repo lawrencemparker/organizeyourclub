@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { 
   ShieldCheck, Users, Calendar, Wallet, FileText, 
@@ -21,6 +21,18 @@ export function LandingPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+
+  // Splash Screen State
+  const [showSplash, setShowSplash] = useState(true);
+  const [fadeSplash, setFadeSplash] = useState(false);
+
+  useEffect(() => {
+    // Start fading out after 1.5 seconds
+    const timer1 = setTimeout(() => setFadeSplash(true), 1500);
+    // Completely remove from DOM after 2 seconds
+    const timer2 = setTimeout(() => setShowSplash(false), 2000);
+    return () => { clearTimeout(timer1); clearTimeout(timer2); };
+  }, []);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -82,6 +94,20 @@ export function LandingPage() {
   return (
     <div className="min-h-screen bg-[#0B0F1A] text-white selection:bg-[var(--primary)] selection:text-white overflow-hidden">
       
+      {/* SPLASH SCREEN */}
+      {showSplash && (
+        <div className={cn(
+          "fixed inset-0 z-[100] flex items-center justify-center bg-white transition-opacity duration-500",
+          fadeSplash ? "opacity-0 pointer-events-none" : "opacity-100"
+        )}>
+          <img 
+            src="/OrganizeYourClubLogo.png" 
+            alt="Organize Your Club Logo" 
+            className="w-64 h-auto md:w-96 object-contain animate-pulse"
+          />
+        </div>
+      )}
+
       {/* NAVIGATION */}
       <nav className="fixed top-0 w-full z-40 border-b border-white/5 bg-[#0B0F1A]/80 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
@@ -256,8 +282,25 @@ export function LandingPage() {
         </div>
       </section>
 
-      <footer className="py-8 border-t border-white/5 text-center text-sm text-muted-foreground">
-        <p>© {new Date().getFullYear()} Organize Your Club. All rights reserved.</p>
+      {/* Footer Section with Privacy Policy Update */}
+      <footer className="border-t border-white/10 bg-[#0F1219] py-8 mt-20">
+        <div className="max-w-6xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-muted-foreground">
+          <p>© {new Date().getFullYear()} Organize Your Club. All rights reserved.</p>
+          <div className="flex items-center gap-6">
+            <Link 
+              to="/privacy" 
+              className="hover:text-[var(--primary)] transition-colors duration-200"
+            >
+              Privacy Policy
+            </Link>
+            <Link 
+              to="/terms" 
+              className="hover:text-[var(--primary)] transition-colors duration-200"
+            >
+              Terms of Service
+            </Link>
+          </div>
+        </div>
       </footer>
 
       {/* LEAD CAPTURE MODAL */}
